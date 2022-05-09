@@ -1,0 +1,127 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="shaders">
+      <UniqueIdentifier>{a7c933e8-f964-4aa3-b8f8-94cb8dde6d47}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="source">
+      <UniqueIdentifier>{d21fdc33-9e41-4f7b-b35d-cf626d1bd93e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="thirdparty">
+      <UniqueIdentifier>{2b172b61-8864-40db-afe3-8ecf262dd990}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="thirdparty\DXUT">
+      <UniqueIdentifier>{268f07c1-d696-4e5c-9462-e4ee6290a9d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="thirdparty\DXUT\Optional">
+      <UniqueIdentifier>{6f1427d6-cd05-47c6-acfe-3208828d62eb}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\source\camera_controller.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\demo.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\main.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\surface.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\SDKmisc.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\DXUT\Optional\DXUTcamera.cpp">
+      <Filter>thirdparty\DXUT\Optional</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\source\camera_controller.h">
+      <Filter>source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\demo.h">
+      <Filter>source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\resolution.h">
+      <Filter>source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\surface.h">
+      <Filter>source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\SDKmisc.h">
+      <Filter>source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\DXUT\Optional\DXUTcamera.h">
+      <Filter>thirdparty\DXUT\Optional</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="..\shaders\voxelization_vertex.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\voxelization_fragment.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\cone_tracing_compute.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\forward_shading_vertex.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\forward_shading_fragment.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\shadow_map_vertex.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\post_processing_vertex.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\post_processing_fragment.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\clear_clipmap_compute.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\zero_clipmap_compute.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\shaders\pack_clipmap_compute.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\shaders\voxelization_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\cone_tracing_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\forward_shading_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\shadow_map_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\get_shadow.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\surface_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\post_processing_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\zero_clipmap_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\clear_clipmap_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\shaders\pack_clipmap_resource_binding.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+  </ItemGroup>
+</Project>
