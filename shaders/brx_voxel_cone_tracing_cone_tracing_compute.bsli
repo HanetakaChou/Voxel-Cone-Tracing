@@ -1,0 +1,760 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_CONE_TRACING_COMPUTE_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_CONE_TRACING_COMPUTE_BSLI_ 1
+
+#ifndef BRX_VCT_ENABLE_ILLUMINATION
+#error "0 or 1"
+#endif
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+#ifndef BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT
+#error "for example 7"
+#endif
+
+#ifndef BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT
+#error "for example 1"
+#endif
+
+#else
+
+#ifndef BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT
+#error "for example 8"
+#endif
+
+#if defined(BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT) && (0 != BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)
+#error "must be 0"
+#else
+#define BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT 0
+#endif
+
+#endif
+
+#include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_low_discrepancy_sequence.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_brdf.bsli"
+
+brx_bool brx_vct_application_bridge_get_gbuffer_surface(in brx_int2 in_screen_space_coordinates, out brx_float3 out_surface_position_world_space, out brx_float3 out_shading_normal_world_space, out brx_float3 out_surface_diffuse_color, out brx_float3 out_surface_specular_color, out brx_float out_surface_roughness);
+
+brx_float3 brx_vct_application_bridge_get_camera_ray_origin();
+
+brx_float3 brx_vct_application_bridge_get_clipmap_anchor();
+
+brx_float3 brx_vct_application_bridge_get_clipmap_center();
+
+brx_float brx_vct_application_bridge_get_clipmap_opacity(in brx_float3 in_opacity_texture_coordinates);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+brx_float3 brx_vct_application_bridge_get_clipmap_illumination(in brx_float3 in_illumination_texture_coordinates);
+
+#endif
+
+void brx_vct_application_bridge_set_radiance_and_ambient_occlusion(in brx_int2 in_screen_space_coordinates, in brx_float4 in_radiance_and_ambient_occlusion);
+
+#include "../include/brx_voxel_cone_tracing.h"
+#include "brx_voxel_cone_tracing_resource.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_octahedral_mapping.bsli"
+
+brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_world_space, brx_float initial_cone_height_voxel_space, brx_float3 cone_axis_direction, brx_float cone_ratio, brx_float cone_height_voxel_space_monotonic_increment_scale, brx_float ambient_occlusion_exponential_distribution_rate_parameter);
+
+#define INTERNAL_BRX_VCT_CONE_TRACING_MAXIMUM_CONE_COUNT (BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT + BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)
+
+#if 0 != (INTERNAL_BRX_VCT_CONE_TRACING_MAXIMUM_CONE_COUNT & (INTERNAL_BRX_VCT_CONE_TRACING_MAXIMUM_CONE_COUNT - 1))
+#error "not power of 2"
+#endif
+
+#define INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT (INTERNAL_BRX_VCT_CONE_TRACING_MAXIMUM_CONE_COUNT / 2)
+
+#if 0 != (INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT & (INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT - 1))
+#error "not power of 2"
+#endif
+
+// https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-variable-syntax
+// "in D3D11 the maximum size is 32kb"
+brx_group_shared brx_float4 internal_brx_vct_cone_tracing_reduction_group_shared_memory[brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT)];
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_NDOTV_THRESHOLD 1e-4
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_DIVISOR_THRESHOLD 1e-4
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_CONE_RATIO_THRESHOLD 1e-4
+
+#ifndef INTERNAL_BRX_DISABLE_ROOT_SIGNATURE
+brx_root_signature(brx_voxel_cone_tracing_cone_tracing_root_signature_macro, brx_voxel_cone_tracing_cone_tracing_root_signature_name)
+#endif
+brx_num_threads(INTERNAL_BRX_VCT_CONE_TRACING_MAXIMUM_CONE_COUNT, 1, 1)
+brx_compute_shader_parameter_begin(main)
+brx_compute_shader_parameter_in_group_id brx_compute_shader_parameter_split
+brx_compute_shader_parameter_in_group_index
+brx_compute_shader_parameter_end(main)
+{
+    brx_int reduction_index = brx_int(brx_group_index);
+
+    brx_float3 surface_position_world_space;
+    brx_float3 surface_shading_normal_world_space;
+    brx_float3 surface_diffuse_color;
+    brx_float3 surface_specular_color;
+    brx_float surface_roughness;
+    brx_branch if (!brx_vct_application_bridge_get_gbuffer_surface(brx_int2(brx_group_id.xy), surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness))
+    {
+        brx_branch if (0 == reduction_index)
+        {
+            brx_vct_application_bridge_set_radiance_and_ambient_occlusion(brx_int2(brx_group_id.xy), brx_float4(0.0, 0.0, 0.0, 0.0));
+        }
+
+        return;
+    }
+
+    brx_float3 reduction_thread_local_radiance;
+    brx_float reduction_thread_local_ambient;
+    brx_branch if (reduction_index < (brx_int(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT) + brx_int(BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)))
+    {
+        brx_float3 camera_ray_direction;
+        {
+            brx_float3 camera_ray_origin = brx_vct_application_bridge_get_camera_ray_origin();
+            camera_ray_direction = brx_normalize(surface_position_world_space - camera_ray_origin);
+        }
+
+        // flip back side normal
+        // ensure brx_dot(N, V) > 1E-5
+        // brx_branch if (brx_dot(surface_shading_normal_world_space, camera_ray_direction) > 0.0)
+        // {
+        //     surface_shading_normal_world_space = -surface_shading_normal_world_space;
+        // }
+
+        brx_float3 N = surface_shading_normal_world_space;
+
+        brx_float3 V = -camera_ray_direction;
+
+        brx_float3 T;
+        brx_float3 B;
+        {
+            // UE: [GetTangentBasis](https://github.com/EpicGames/UnrealEngine/blob/4.27/Engine/Shaders/Private/MonteCarlo.ush#L12)
+            // U3D: [GetLocalFrame](https://github.com/Unity-Technologies/Graphics/blob/v10.8.1/com.unity.render-pipelines.core/ShaderLibrary/CommonLighting.hlsl#L408)
+
+            // NOTE: "local_z" should be normalized.
+            brx_float3 local_z = N;
+
+            brx_float x = local_z.x;
+            brx_float y = local_z.y;
+            brx_float z = local_z.z;
+
+            brx_float sz = z >= 0.0 ? 1.0 : -1.0;
+            brx_float a = 1.0 / (sz + z);
+            brx_float ya = y * a;
+            brx_float b = x * ya;
+            brx_float c = x * sz;
+
+            brx_float3 local_x = brx_float3(c * x * a - 1, sz * b, c);
+            brx_float3 local_y = brx_float3(b, y * ya - sz, y);
+
+            T = local_x;
+            B = local_y;
+        }
+
+        brx_float min_sample_size_voxel_space;
+        {
+            brx_float3 distance_from_anchor_world_space = brx_abs(surface_position_world_space - brx_vct_application_bridge_get_clipmap_anchor());
+            brx_float max_distance_from_anchor_world_space = brx_max(distance_from_anchor_world_space.x, brx_max(distance_from_anchor_world_space.y, distance_from_anchor_world_space.z));
+
+            const brx_float clipmap_level_zero_boundary = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * (brx_float(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> 1) - 8.0);
+
+            brx_float max_relative_distance_from_anchor = max_distance_from_anchor_world_space * (1.0 / clipmap_level_zero_boundary);
+            min_sample_size_voxel_space = brx_max(1.0, 2.0 * max_relative_distance_from_anchor);
+        }
+
+        brx_float3 cone_axis_direction;
+        brx_float cone_ratio;
+        brx_float cone_height_voxel_space_monotonic_increment_scale;
+        brx_float ambient_occlusion_exponential_distribution_rate_parameter;
+        brx_float Inv_DiffuseSoftness_Factor;
+        brx_float Inv_NDotV_Factor;
+        brx_float3 radiance_multiple;
+        brx_float ambient_multiple;
+        brx_branch if (reduction_index < brx_int(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT))
+        {
+            // brx_branch if (dot(N, V) > 1E-5)
+
+            brx_int cone_index = reduction_index;
+
+            brx_float3 omega_i = brx_lambert_sample_omega_i(brx_hammersley_2d(brx_uint(cone_index), brx_uint(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT)));
+
+            brx_float3 L = brx_normalize(T * omega_i.x + B * omega_i.y + N * omega_i.z);
+
+            cone_axis_direction = L;
+
+            brx_float NdotL = brx_max(0.0, omega_i.z);
+
+            brx_float pdf = brx_lambert_pdf_omega_i(NdotL);
+
+            // "20.4 Mipmap Filtered Samples" of GPU Gems 3
+            // UE: [SolidAngleSample](https://github.com/EpicGames/UnrealEngine/blob/4.27/Engine/Shaders/Private/ReflectionEnvironmentShaders.usf#L414)
+            // U3D: [omegaS](https://github.com/Unity-Technologies/Graphics/blob/v10.8.0/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl#L500)
+            brx_float omega_s = (1.0 / brx_float(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT)) / pdf;
+
+            // Omega = 2 PI (1 - cos theta) // theta: cone half-angle
+            brx_float cone_cos_theta = 1.0 - brx_min(omega_s / (2.0 * BRX_M_PI), 1.0);
+            brx_float cone_tan_theta = brx_sqrt(brx_max(0.0, 1.0 - cone_cos_theta * cone_cos_theta)) / brx_max(cone_cos_theta, INTERNAL_BRX_VCT_CONE_TRACING_DIVISOR_THRESHOLD);
+
+            cone_ratio = cone_tan_theta;
+
+            // TODO:
+            // cone_ratio = brx_min(cone_ratio, 1.0);
+
+            // TODO:
+            // cone_height_voxel_space_monotonic_increment_scale = 0.5;
+            cone_height_voxel_space_monotonic_increment_scale = 1.0;
+
+            // https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/Sponza/glTF/Sponza.gltf#L8558
+            // https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/Models/Sponza/glTF/Sponza.gltf#L8558
+            const brx_float ambient_occlusion_range_world_space = 128.0 * 0.00800000037997961;
+            const brx_float ambient_occlusion_distance_darkening = -0.25;
+            ambient_occlusion_exponential_distribution_rate_parameter = brx_ln(10.0) * brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) / brx_max(brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE), ambient_occlusion_range_world_space) * brx_pow(min_sample_size_voxel_space, ambient_occlusion_distance_darkening);
+
+            const brx_float DiffuseSoftness = 0.5;
+            Inv_DiffuseSoftness_Factor = 1.0 - DiffuseSoftness;
+
+            Inv_NDotV_Factor = 0.0;
+
+            // -------
+            brx_float3 rho = surface_diffuse_color;
+
+            radiance_multiple = (1.0 / brx_float(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT)) * brx_lambert_throughput(rho);
+
+            ambient_multiple = (1.0 / brx_float(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT)) * brx_lambert_throughput_without_albedo();
+        }
+        else
+        {
+            // brx_branch if (brx_dot(N, V) > 1E-5)
+
+            brx_int cone_index = reduction_index - brx_int(BRX_VCT_CONE_TRACING_DIFFUSE_CONE_COUNT);
+
+            // Prevent the surface_roughness to be zero
+            // https://github.com/EpicGames/UnrealEngine/blob/4.27/Engine/Shaders/Private/CapsuleLightIntegrate.ush#L94
+            const brx_float cvar_global_min_roughness_override = 0.02;
+            surface_roughness = brx_max(cvar_global_min_roughness_override, surface_roughness);
+
+            // Real-Time Rendering Fourth Edition / 9.8.1 Normal Distribution Functions: "In the Disney principled shading model, Burley[214] exposes the surface_roughness control to users as g = r2, where r is the user-interface surface_roughness parameter value between 0 and 1."
+            brx_float alpha = surface_roughness * surface_roughness;
+
+            // Prevent the NdotV to be zero
+            // https://github.com/EpicGames/UnrealEngine/blob/4.27/Engine/Shaders/Private/BRDF.ush#L34
+            brx_float3 omega_o = brx_normalize(brx_float3(brx_dot(V, T), brx_dot(V, B), brx_max(INTERNAL_BRX_VCT_CONE_TRACING_NDOTV_THRESHOLD, brx_dot(V, N))));
+
+            brx_float3 omega_h = brx_trowbridge_reitz_sample_omega_h(brx_hammersley_2d(brx_uint(cone_index), brx_uint(BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)), alpha, omega_o);
+
+            brx_float3 H = brx_normalize(T * omega_h.x + B * omega_h.y + N * omega_h.z);
+
+            brx_float3 L = brx_normalize(brx_reflect(-V, H));
+
+            cone_axis_direction = L;
+
+            brx_float NdotV = brx_max(0.0, omega_o.z);
+
+            brx_float NdotH = brx_max(0.0, omega_h.z);
+
+            brx_float NdotL = brx_max(0.0, brx_dot(N, L));
+
+            brx_float VdotH = brx_max(0.0, brx_dot(omega_o, omega_h));
+
+            brx_float pdf = brx_trowbridge_reitz_pdf_omega_i(alpha, NdotV, NdotH);
+
+            // "20.4 Mipmap Filtered Samples" of GPU Gems 3
+            // UE: [SolidAngleSample](https://github.com/EpicGames/UnrealEngine/blob/4.27/Engine/Shaders/Private/ReflectionEnvironmentShaders.usf#L414)
+            // U3D: [omegaS](https://github.com/Unity-Technologies/Graphics/blob/v10.8.0/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl#L500)
+            brx_float omega_s = (1.0 / brx_float(BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)) / pdf;
+
+            // Omega = 2 PI (1 - cos theta) // theta: cone half-angle
+            brx_float cone_cos_theta = 1.0 - brx_min(omega_s / (2.0 * BRX_M_PI), 1.0);
+            brx_float cone_tan_theta = brx_sqrt(brx_max(0.0, 1.0 - cone_cos_theta * cone_cos_theta)) / brx_max(cone_cos_theta, INTERNAL_BRX_VCT_CONE_TRACING_DIVISOR_THRESHOLD);
+
+            cone_ratio = cone_tan_theta;
+
+            // TODO:
+            // cone_ratio = brx_min(cone_ratio, 1.0);
+
+            cone_height_voxel_space_monotonic_increment_scale = 1.0;
+
+            ambient_occlusion_exponential_distribution_rate_parameter = -1.0;
+
+            Inv_DiffuseSoftness_Factor = 0.0;
+
+            const brx_float coplanarOffsetFactor = 5.0;
+            Inv_NDotV_Factor = brx_pow(brx_clamp(1.0 - NdotV, 0.0, 1.0), 4.0) * coplanarOffsetFactor;
+
+            // -------
+
+            brx_float3 f0 = surface_specular_color;
+            const brx_float3 f90 = brx_float3(1.0, 1.0, 1.0);
+
+            radiance_multiple = (1.0 / brx_float(BRX_VCT_CONE_TRACING_SPECULAR_CONE_COUNT)) * brx_trowbridge_reitz_throughput(alpha, NdotL, f0, f90, VdotH);
+
+            ambient_multiple = 0.0;
+        }
+
+        brx_float initial_cone_height_voxel_space;
+        brx_float3 initial_cone_base_center_position_world_space;
+        {
+            // Ray-Tracing-Gems: [Chapter 6: A Fast and Robust Method for Avoiding Self-Intersection](https://www.realtimerendering.com/raytracinggems/rtg/index.html)
+            // Ray-Tracing-Gems: [offset_ray](https://github.com/Apress/ray-tracing-gems/blob/master/Ch_06_A_Fast_and_Robust_Method_for_Avoiding_Self-Intersection/offset_ray.cu)
+            // PBR-BOOK-V3: [3.9.5 Robust Spawned Ray Origins](https://pbr-book.org/3ed-2018/Shapes/Managing_Rounding_Error#RobustSpawnedRayOrigins)
+            // PBRT-V3: [OffsetRayOrigin](https://github.com/mmp/pbrt-v3/blob/book/src/core/geometry.h#L1421)
+            // PBR-BOOK-V4: [6.8.6 Robust Spawned Ray Origins](https://pbr-book.org/4ed/Shapes/Managing_Rounding_Error#RobustSpawnedRayOrigins)
+            // PBRT-V4: [OffsetRayOrigin](https://github.com/mmp/pbrt-v4/blob/ci/src/pbrt/ray.h#L75)
+
+            const brx_float initialOffsetBias = 2.0;
+            const brx_float initialOffsetDistanceFactor = 1.0;
+
+            brx_float initialOffset = min_sample_size_voxel_space * (initialOffsetDistanceFactor + 0.5 * cone_height_voxel_space_monotonic_increment_scale) + initialOffsetBias * (1.0 + Inv_NDotV_Factor);
+
+            initial_cone_height_voxel_space = initialOffset;
+            initial_cone_base_center_position_world_space = surface_position_world_space + brx_normalize(brx_lerp(cone_axis_direction, surface_shading_normal_world_space, Inv_DiffuseSoftness_Factor)) * (brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * initialOffset);
+        }
+
+        // TODO:
+        // ensure sample at least once
+        {
+            brx_float max_cone_radio = (brx_float(1u << (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) + brx_int(BRX_VCT_CLIPMAP_MIP_LEVEL_COUNT))) - brx_float(INTERNAL_BRX_VCT_CONE_TRACING_CONE_RATIO_THRESHOLD)) * 0.5 / initial_cone_height_voxel_space;
+
+            cone_ratio = brx_min(cone_ratio, max_cone_radio);
+        }
+
+        brx_float4 radiance_and_ambient_occlusion = internal_brx_trace_cone(initial_cone_base_center_position_world_space, initial_cone_height_voxel_space, cone_axis_direction, cone_ratio, cone_height_voxel_space_monotonic_increment_scale, ambient_occlusion_exponential_distribution_rate_parameter);
+
+        brx_float3 L_i = radiance_and_ambient_occlusion.xyz;
+        brx_float V_i = radiance_and_ambient_occlusion.w;
+
+        reduction_thread_local_radiance = L_i * radiance_multiple;
+        reduction_thread_local_ambient = V_i * ambient_multiple;
+    }
+    else
+    {
+        reduction_thread_local_radiance = brx_float3(0.0, 0.0, 0.0);
+        reduction_thread_local_ambient = 0.0;
+    }
+
+    brx_float4 reduction_thread_local = brx_float4(reduction_thread_local_radiance, reduction_thread_local_ambient);
+
+    // Parallel Reduction
+    brx_float4 reduction_group_total;
+    {
+
+        // Half of the group shared memory can be saved by the following method:
+        // Half threads store the local values into the group shared memory, and the other threads read back these values from the group shared memory and reduce them with their local values.
+
+        brx_branch if (reduction_index >= brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT) && reduction_index < (brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT) * 2))
+        {
+            brx_int group_shared_memory_index = reduction_index - brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT);
+            internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] = reduction_thread_local;
+        }
+
+        brx_group_memory_barrier_with_group_sync();
+
+        brx_branch if (reduction_index < brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT))
+        {
+            brx_int group_shared_memory_index = reduction_index;
+            internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] = reduction_thread_local + internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index];
+        }
+
+#if 1
+        brx_unroll for (brx_int k = (brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT) / 2); k >= 1; k /= 2)
+        {
+            brx_group_memory_barrier_with_group_sync();
+
+            brx_branch if (reduction_index < k)
+            {
+                brx_int group_shared_memory_index = reduction_index;
+                internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] = internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] + internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index + k];
+            }
+        }
+#else
+        brx_unroll for (brx_int k = brx_firstbithigh(brx_int(INTERNAL_BRX_VCT_CONE_TRACING_GROUP_SHARED_MEMORY_COUNT) / 2); k >= 0; --k)
+        {
+            brx_group_memory_barrier_with_group_sync();
+
+            brx_branch if (reduction_index < (1u << k))
+            {
+                brx_int group_shared_memory_index = reduction_index;
+                internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] = internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index] + internal_brx_vct_cone_tracing_reduction_group_shared_memory[group_shared_memory_index + (1u << k)];
+            }
+        }
+#endif
+
+        brx_group_memory_barrier_with_group_sync();
+
+        // brx_branch if (0 == reduction_index)
+        {
+            reduction_group_total = internal_brx_vct_cone_tracing_reduction_group_shared_memory[0];
+        }
+    }
+
+    brx_branch if (0 == reduction_index)
+    {
+        brx_float4 reduction_group_total_radiance_and_ambient_occlusion = reduction_group_total;
+
+        brx_float4 radiance_and_ambient_occlusion = reduction_group_total_radiance_and_ambient_occlusion;
+
+        brx_vct_application_bridge_set_radiance_and_ambient_occlusion(brx_int2(brx_group_id.xy), radiance_and_ambient_occlusion);
+    }
+}
+
+#ifndef BRX_VCT_CONE_TRACING_MAXIMUM_ITERATION_COUNT
+#error "for example 128"
+#endif
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_MIN_DISTANCE_TO_BOUNDARY_THRESHOLD 1e-4
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD 1e-4
+
+// TODO
+#define INTERNAL_BRX_VCT_CONE_TRACING_TRANSPARENCY_THRESHOLD 1e-4
+
+brx_float internal_brx_ambient_occlusion_exponential_distribution_antiderivative(brx_float rate_parameter, brx_float t)
+{
+    // exponential distribution: k = lambda * exp (- lambda * t)
+    // antiderivative: K = - exp (-lambda * t)
+
+    return -brx_exp(-rate_parameter * t);
+}
+
+brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_world_space, brx_float initial_cone_height_voxel_space, brx_float3 cone_axis_direction, brx_float cone_ratio, brx_float cone_height_voxel_space_monotonic_increment_scale, brx_float ambient_occlusion_exponential_distribution_rate_parameter)
+{
+    brx_float3 accumulation_radiance = brx_float3(0.0, 0.0, 0.0);
+
+    // \int a * \exp (-a t) V(t)  dt
+    // distance mapping function: opacity contribution should descrease with distance
+    brx_float accumulation_ambient_occlusion = 0.0;
+
+    brx_float accumulation_visibility_function = 1.0;
+
+    // K(0) = -1
+    brx_float previous_ambient_factor = -1.0;
+
+    brx_float3 current_cone_base_center_position_world_space = initial_cone_base_center_position_world_space;
+
+    brx_float current_cone_height_voxel_space = initial_cone_height_voxel_space;
+
+    brx_loop for (brx_int _unused_iteration_index = 0; _unused_iteration_index < brx_int(BRX_VCT_CONE_TRACING_MAXIMUM_ITERATION_COUNT); ++_unused_iteration_index)
+    {
+        brx_float min_distance_to_boundary_world_space;
+        brx_float min_sample_size_voxel_space;
+        {
+            const brx_float clipmap_boundary = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * brx_float(1u << (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) - 1)) * (brx_float(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> 1) - 0.5);
+
+            brx_float3 distance_from_anchor_world_space = brx_abs(current_cone_base_center_position_world_space - brx_vct_application_bridge_get_clipmap_anchor());
+            brx_float max_distance_from_anchor_world_space = brx_max(distance_from_anchor_world_space.x, brx_max(distance_from_anchor_world_space.y, distance_from_anchor_world_space.z));
+            min_distance_to_boundary_world_space = clipmap_boundary - max_distance_from_anchor_world_space;
+
+            const brx_float clipmap_level_zero_boundary = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * (brx_float(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> 1) - 8.0);
+
+            brx_float max_relative_distance_from_anchor = max_distance_from_anchor_world_space * (1.0 / clipmap_level_zero_boundary);
+            min_sample_size_voxel_space = brx_max(1.0, 2.0 * max_relative_distance_from_anchor);
+        }
+
+        brx_float sample_size_voxel_space;
+        brx_float float_level;
+        brx_float cone_height_voxel_space_monotonic_increment;
+        {
+            // Real-Time Rendering Fourth Edition: "Figure 11.12"
+            // cone tracing is approximated by intersecting the scene surface with a series of spheres (of which radii follow the increasing cone base radius)
+            //
+            // the front edge of the current sphere touches exactly the base edge of the next sphere
+            // cone_height_next - cone_radius_next = cone_height_current + cone_radius_current
+            //
+            // case 1
+            // cone_radius_current = cone_height_current * cone_ratio
+            // cone_radius_next = cone_height_next * cone_ratio
+            //
+            // cone_height_next - cone_height_next * cone_ratio = cone_height_current + cone_height_current * cone_ratio
+            // => cone_height_next = (cone_height_current + cone_height_current * cone_ratio) / (1.0 - cone_ratio)
+            //
+            // case 2
+            // cone_radius_current = min_sample_size * 0.5
+            // cone_radius_next = cone_height_next * cone_ratio
+            //
+            // one_height_next - cone_height_next * cone_ratio = cone_height_current + min_sample_size * 0.5
+            // =>  cone_height_next = (cone_height_current + min_sample_size * 0.5) / (1.0 - cone_ratio)
+            //
+            // case 3
+            // cone_radius_current = min_sample_size * 0.5
+            // cone_radius_next = min_sample_size * 0.5
+            //
+            // cone_height_next - min_sample_size * 0.5  = cone_height_current + min_sample_size * 0.5
+            // => cone_height_next = cone_height_current + min_sample_size
+            //
+
+            brx_float minimum_cone_diameter_voxel_space = min_sample_size_voxel_space;
+
+            brx_float cone_current_diameter_voxel_space = brx_max(minimum_cone_diameter_voxel_space, current_cone_height_voxel_space * cone_ratio * 2.0);
+
+            brx_float next_cone_height_voxel_space = brx_max(current_cone_height_voxel_space + minimum_cone_diameter_voxel_space, (current_cone_height_voxel_space + cone_current_diameter_voxel_space * 0.5) / brx_max(INTERNAL_BRX_VCT_CONE_TRACING_DIVISOR_THRESHOLD, 1.0 - cone_ratio));
+
+            sample_size_voxel_space = cone_current_diameter_voxel_space;
+
+            float_level = brx_log2(sample_size_voxel_space);
+
+            cone_height_voxel_space_monotonic_increment = (next_cone_height_voxel_space - current_cone_height_voxel_space) * cone_height_voxel_space_monotonic_increment_scale;
+        }
+
+        brx_float sample_size_world_space = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * sample_size_voxel_space;
+
+        brx_float min_distance_to_boundary_weight = brx_min((min_distance_to_boundary_world_space - sample_size_world_space) / sample_size_world_space, 1.0);
+
+        brx_branch if ((brx_int(brx_floor(float_level)) >= (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) + brx_int(BRX_VCT_CLIPMAP_MIP_LEVEL_COUNT))) || (min_distance_to_boundary_weight < brx_float(INTERNAL_BRX_VCT_CONE_TRACING_MIN_DISTANCE_TO_BOUNDARY_THRESHOLD)))
+        {
+            break;
+        }
+
+        brx_branch if (ambient_occlusion_exponential_distribution_rate_parameter > 0.0)
+        {
+            // Newton Leibniz theorem
+            // we assume that the visibility function is piecewise constant along the cone axis direction for each cone height increment
+            brx_float ambient_factor = internal_brx_ambient_occlusion_exponential_distribution_antiderivative(ambient_occlusion_exponential_distribution_rate_parameter, current_cone_height_voxel_space);
+            accumulation_ambient_occlusion += (ambient_factor - previous_ambient_factor) * accumulation_visibility_function;
+            previous_ambient_factor = ambient_factor;
+        }
+
+        brx_float sampled_opacity = 0.0;
+        brx_float3 sampled_illumination = brx_float3(0.0, 0.0, 0.0);
+        {
+            brx_int integer_levels[2];
+            brx_float integer_level_weights[2];
+            {
+                brx_int integer_level = brx_int(brx_floor(float_level));
+                brx_float fraction_level = brx_frac(float_level);
+
+                integer_levels[0] = integer_level;
+                integer_levels[1] = integer_level + 1;
+                integer_level_weights[0] = (1.0 - fraction_level) * min_distance_to_boundary_weight;
+                integer_level_weights[1] = fraction_level * min_distance_to_boundary_weight;
+            }
+
+            brx_unroll for (brx_int integer_level_index = 0; integer_level_index < 2; ++integer_level_index)
+            {
+                brx_int integer_level = integer_levels[integer_level_index];
+
+                brx_float integer_level_weight = integer_level_weights[integer_level_index];
+
+                brx_branch if (integer_level < (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) + brx_int(BRX_VCT_CLIPMAP_MIP_LEVEL_COUNT)))
+                {
+                    brx_int stack_level = brx_min(integer_level, (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) - 1));
+
+                    brx_int mip_level = brx_max(0, (integer_level - (brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) - 1)));
+
+                    brx_float3 voxel_coordinates;
+                    {
+                        brx_float clipmap_level_boundary = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * brx_float(1u << stack_level) * brx_float(BRX_VCT_CLIPMAP_MAP_SIZE);
+
+                        brx_float clipmap_level_map_size = brx_float(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> mip_level);
+
+                        // ( ... / (clipmap_level_boundary * 0.5)) * 0.5 + 0.5
+                        // = ... / clipmap_level_boundary + 0.5
+                        brx_float3 normalized_voxel_coordinates = (current_cone_base_center_position_world_space - brx_vct_application_bridge_get_clipmap_center()) / clipmap_level_boundary + 0.5;
+
+                        voxel_coordinates = normalized_voxel_coordinates * clipmap_level_map_size;
+
+                        // smooth sampling
+                        {
+                            brx_float3 uv = voxel_coordinates + brx_float3(0.5, 0.5, 0.5);
+
+                            brx_float3 integer_uv = brx_floor(uv);
+                            brx_float3 fraction_uv = brx_frac(uv);
+
+                            fraction_uv = brx_smoothstep(brx_float3(0.0, 0.0, 0.0), brx_float3(1.0, 1.0, 1.0), fraction_uv);
+                            uv = integer_uv + fraction_uv;
+
+                            voxel_coordinates = uv - brx_float3(0.5, 0.5, 0.5);
+                        }
+                    }
+
+                    brx_float integer_level_opacity;
+                    {
+                        brx_float3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_float(voxel_coordinates, stack_level, mip_level);
+
+                        integer_level_opacity = brx_clamp(brx_vct_application_bridge_get_clipmap_opacity(opacity_texture_coordinates), 0.0, 1.0);
+                    }
+
+                    sampled_opacity += (integer_level_opacity * integer_level_weight);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+                    brx_float3 integer_level_illumination;
+                    brx_branch if (integer_level_opacity > brx_float(INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD))
+                    {
+                        brx_float direction_width_index;
+                        brx_float direction_height_index;
+                        {
+                            // PBR Book V3: [Figure 14.14](https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation#BasicDerivation)
+                            // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
+                            // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
+                            brx_float2 ndc_flip_x = brx_octahedral_map(-cone_axis_direction);
+
+                            // PBRT-V4: [File Format](https://www.pbrt.org/users-guide-v4#file_format_changes)
+                            // PBRT-V4: [imgtool makeequiarea](https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cmd/imgtool.cpp#L2130)
+                            brx_float2 uv = (ndc_flip_x + brx_float2(-1.0, -1.0)) * brx_float2(-0.5, -0.5);
+
+                            direction_width_index = uv.x * brx_float(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT);
+                            direction_height_index = uv.y * brx_float(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
+                        }
+
+#if 0
+                        // smooth sampling
+                        {
+                            brx_float2 uv = brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5);
+
+                            brx_float2 integer_uv = brx_floor(uv);
+                            brx_float2 fraction_uv = brx_frac(uv);
+
+                            fraction_uv = brx_smoothstep(brx_float2(0.0, 0.0), brx_float2(1.0, 1.0), fraction_uv);
+                            uv = integer_uv + fraction_uv;
+
+                            direction_width_index = uv.x - 0.5;
+                            direction_height_index = uv.y - 0.5;
+                        }
+#endif
+
+                        brx_int integer_direction_width_indices[2];
+                        brx_float integer_direction_width_weights[2];
+                        {
+                            brx_float biased_direction_width_index = direction_width_index + 0.5;
+
+                            brx_int integer_direction_width_index = brx_int(brx_floor(biased_direction_width_index));
+                            brx_float fraction_direction_width_index = brx_frac(biased_direction_width_index);
+
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT - 1))
+                            integer_direction_width_indices[0] = brx_int(brx_uint(integer_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+                            integer_direction_width_indices[1] = brx_int(brx_uint(integer_direction_width_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+#else
+                            integer_direction_width_indices[0] = brx_int(brx_uint(integer_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+                            integer_direction_width_indices[1] = brx_int(brx_uint(integer_direction_width_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+#endif
+                            integer_direction_width_weights[0] = 1.0 - fraction_direction_width_index;
+                            integer_direction_width_weights[1] = fraction_direction_width_index;
+                        }
+
+                        brx_int integer_direction_height_indices[2];
+                        brx_float integer_direction_height_weights[2];
+                        {
+                            brx_float biased_direction_height_index = direction_height_index + 0.5;
+
+                            brx_int integer_direction_height_index = brx_int(brx_floor(biased_direction_height_index));
+                            brx_float fraction_direction_height_index = brx_frac(biased_direction_height_index);
+
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT - 1))
+                            integer_direction_height_indices[0] = brx_int(brx_uint(integer_direction_height_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1));
+                            integer_direction_height_indices[1] = brx_int(brx_uint(integer_direction_height_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1));
+#else
+                            integer_direction_height_indices[0] = brx_int(brx_uint(integer_direction_height_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT));
+                            integer_direction_height_indices[1] = brx_int(brx_uint(integer_direction_height_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT));
+#endif
+                            integer_direction_height_weights[0] = 1.0 - fraction_direction_height_index;
+                            integer_direction_height_weights[1] = fraction_direction_height_index;
+                        }
+
+                        brx_float3 illumination_four = brx_float3(0.0, 0.0, 0.0);
+
+                        brx_unroll for (brx_int integer_direction_width_index_index = 0; integer_direction_width_index_index < 2; ++integer_direction_width_index_index)
+                        {
+                            brx_unroll for (brx_int integer_direction_height_index_index = 0; integer_direction_height_index_index < 2; ++integer_direction_height_index_index)
+                            {
+                                brx_int integer_direction_width_index = integer_direction_width_indices[integer_direction_width_index_index];
+                                brx_float integer_direction_width_weight = integer_direction_width_weights[integer_direction_width_index_index];
+
+                                brx_int integer_direction_height_index = integer_direction_height_indices[integer_direction_height_index_index];
+                                brx_float integer_direction_height_weight = integer_direction_height_weights[integer_direction_height_index_index];
+
+                                brx_float3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, integer_direction_width_index, integer_direction_height_index);
+
+                                brx_float3 illumination_one_of_four = brx_max(brx_float3(0.0, 0.0, 0.0), brx_vct_application_bridge_get_clipmap_illumination(illumination_texture_coordinates));
+
+                                illumination_four += (illumination_one_of_four * integer_direction_width_weight * integer_direction_height_weight);
+                            }
+                        }
+
+                        integer_level_illumination = illumination_four;
+                    }
+                    else
+                    {
+                        integer_level_illumination = brx_float3(0.0, 0.0, 0.0);
+                    }
+
+                    brx_float voxel_size = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * brx_float(1u << integer_level);
+                    brx_float voxel_area = voxel_size * voxel_size;
+
+                    sampled_illumination += (integer_level_illumination * voxel_area * integer_level_weight);
+#endif
+                }
+            }
+        }
+
+        // sample_size_voxel_space: cone_diameter
+        // cone_height_voxel_space_monotonic_increment
+        //
+        // Beer's Law
+        // 1.0 - sampled_opacity = sampled_transmittance = exp(-sigma_t * sample_size_voxel_space)
+        // 1.0 - cone_height_increment_opacity = cone_height_increment_transmittance = exp(-sigma_t * cone_height_voxel_space_monotonic_increment)
+        //
+        // 1.0 - cone_height_increment_opacity = pow(1.0 - sampled_opacity, (cone_height_voxel_space_monotonic_increment / sample_size_voxel_space))
+        brx_float one_minus_alpha = brx_clamp(brx_pow(brx_clamp(1.0 - sampled_opacity, 0.0, 1.0), (cone_height_voxel_space_monotonic_increment / sample_size_voxel_space)), 0.0, 1.0);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+        // Photon Mapping
+        // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
+        // during the voxelization step, we calculate the "BRDF * E_n" part and the premultiplied alpha "opacity"
+        // during the cone tracing step, we calculate the "(1 / ConeBaseDiameter * ConeBaseDiameter) * VoxelSize * VoxelSize" part
+        brx_float3 premultiplied_alpha_color = (1.0 / (sample_size_world_space * sample_size_world_space)) * sampled_illumination;
+
+        // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/transparency-or-translucency-rendering)
+        // accumulation_visibility_function: V_{k-1}
+        // premultiplied_alpha_color: A_k * C_k
+        // under operation: \sum V_{k-1} * (A_k * C_k)
+        accumulation_radiance += (accumulation_visibility_function * premultiplied_alpha_color);
+#endif
+
+        // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/transparency-or-translucency-rendering)
+        // under operation: V_k = \prod (1 - A_k)
+        accumulation_visibility_function *= one_minus_alpha;
+
+        brx_branch if (accumulation_visibility_function < brx_float(INTERNAL_BRX_VCT_CONE_TRACING_TRANSPARENCY_THRESHOLD))
+        {
+            break;
+        }
+
+        current_cone_base_center_position_world_space += (cone_axis_direction * brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * cone_height_voxel_space_monotonic_increment);
+        current_cone_height_voxel_space += cone_height_voxel_space_monotonic_increment;
+    }
+
+    brx_branch if (ambient_occlusion_exponential_distribution_rate_parameter > 0.0)
+    {
+        // k(inf) = 0
+        accumulation_ambient_occlusion += (0.0 - internal_brx_ambient_occlusion_exponential_distribution_antiderivative(ambient_occlusion_exponential_distribution_rate_parameter, current_cone_height_voxel_space)) * accumulation_visibility_function;
+    }
+
+    // TODO:
+    // accumulation_radiance += accumulation_visibility_function * environment_lighting_radiance
+
+    return brx_float4(accumulation_radiance, accumulation_ambient_occlusion);
+}
+
+#endif

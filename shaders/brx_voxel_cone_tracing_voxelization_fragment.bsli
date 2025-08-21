@@ -1,0 +1,437 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_VOXELIZATION_FRAGMENT_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_VOXELIZATION_FRAGMENT_BSLI_ 1
+
+#ifndef BRX_VCT_ENABLE_ILLUMINATION
+#error "0 or 1"
+#endif
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+#ifndef BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT
+#error "for example 36"
+#endif
+
+#ifndef BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT
+#error "for example 1"
+#endif
+
+#endif
+
+#include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+
+brx_bool brx_vct_application_bridge_get_surface(in brx_float3 in_normal, in brx_float4 in_tangent, in brx_float2 in_texcoord, out brx_float3 out_surface_shading_normal_world_space, out brx_float3 out_surface_diffuse_color, out brx_float3 out_surface_specular_color, out brx_float out_surface_roughness, out brx_float out_surface_opacity, out brx_float3 out_surface_emissive);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
+
+void brx_vct_application_bridge_get_environment_lighting_illumination(in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness, out brx_float3 out_environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT]);
+
+brx_float3 brx_vct_application_bridge_get_environment_lighting_radiance(in brx_float3 in_environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT], in brx_float3 in_outgoing_direction_world_space, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
+
+#endif
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
+
+brx_int brx_vct_application_bridge_get_direct_lighting_count(in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
+
+brx_float3 brx_vct_application_bridge_get_direct_lighting_illumination(in brx_int in_direct_lighting_index, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
+
+brx_float3 brx_vct_application_bridge_get_direct_lighting_radiance(in brx_int in_direct_lighting_index, in brx_float3 in_direct_lighting_illumination, in brx_float3 in_outgoing_direction_world_space, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
+
+#endif
+
+#endif
+
+brx_uint brx_vct_application_bridge_get_clipmap_mask(in brx_int3 in_mask_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_mask(in brx_int3 in_mask_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+
+brx_uint brx_vct_application_bridge_get_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+brx_uint brx_vct_application_bridge_get_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+
+brx_uint brx_vct_application_bridge_get_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+
+brx_uint brx_vct_application_bridge_get_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+
+#endif
+
+#include "../include/brx_voxel_cone_tracing.h"
+#include "brx_voxel_cone_tracing_resource.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_octahedral_mapping.bsli"
+
+#define INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT 3
+
+// TODO
+#define INTERNAL_BRX_VCT_VOXELIZATION_OPACITY_THRESHOLD 1e-4
+
+// TODO
+#define INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD 1e-4
+
+#ifndef INTERNAL_BRX_DISABLE_ROOT_SIGNATURE
+brx_root_signature(brx_voxel_cone_tracing_voxelization_root_signature_macro, brx_voxel_cone_tracing_voxelization_root_signature_name)
+#endif
+brx_pixel_shader_parameter_begin(main)
+brx_pixel_shader_parameter_in_sample_mask_in brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in_frag_coord brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in_cull_distance brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_flat_in(brx_int, in_viewport_depth_direction_index, 0) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_flat_in(brx_int, in_clipmap_stack_level_index, 1) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in(brx_float3, in_interpolated_position_world_space, 2) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in(brx_float3, in_interpolated_normal, 3) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in(brx_float4, in_interpolated_tangent, 4) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in(brx_float2, in_interpolated_texcoord, 5)
+brx_pixel_shader_parameter_end(main)
+{
+    brx_float3 surface_shading_normal_world_space;
+    brx_float3 surface_diffuse_color;
+    brx_float3 surface_specular_color;
+    brx_float surface_roughness;
+    brx_float surface_opacity;
+    brx_float3 surface_emissive;
+    brx_branch if (!brx_vct_application_bridge_get_surface(in_interpolated_normal, in_interpolated_tangent, in_interpolated_texcoord, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness, surface_opacity, surface_emissive))
+    {
+        // discard;
+        return;
+    }
+
+    brx_float3 surface_position_world_space = in_interpolated_position_world_space;
+
+    // right negative -> right positive
+    // up negative -> up positive
+    brx_float3 viewport_depth_direction_texel_space = brx_float3(brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) - brx_frag_coord.x, brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) - brx_frag_coord.y, brx_frag_coord.z * BRX_VCT_CLIPMAP_MAP_SIZE);
+
+    brx_float3 texel_space;
+    brx_int3 offset_direction;
+    brx_branch if (brx_int(BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Z) == in_viewport_depth_direction_index)
+    {
+        texel_space = brx_float3(viewport_depth_direction_texel_space.x, viewport_depth_direction_texel_space.y, viewport_depth_direction_texel_space.z);
+        offset_direction = brx_int3(0, 0, 1);
+    }
+    else if (brx_int(BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Y) == in_viewport_depth_direction_index)
+    {
+        texel_space = brx_float3(viewport_depth_direction_texel_space.y, viewport_depth_direction_texel_space.z, viewport_depth_direction_texel_space.x);
+        offset_direction = brx_int3(0, 1, 0);
+    }
+    else
+    {
+        // assert(BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_X == in_viewport_depth_direction_index)
+        texel_space = brx_float3(viewport_depth_direction_texel_space.z, viewport_depth_direction_texel_space.x, viewport_depth_direction_texel_space.y);
+        offset_direction = brx_int3(1, 0, 0);
+    }
+
+    // \[Takeshige 2015\] [Masaya Takeshige. "The Basics of GPU Voxelization." NVIDIA GameWorks Blog 2015.](https://developer.nvidia.com/content/basics-gpu-voxelization)
+    // the same pixel may intersect multiple voxels in view depth direction
+    // this is the reason why we need to enable the MSAA to check the opacity contribution of each sample, within the same pixel, to different voxels
+    const brx_int voxel_coordinates_offsets[INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT] = brx_array_constructor_begin(brx_int, INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT) - 1 brx_array_constructor_split 0 brx_array_constructor_split 1 brx_array_constructor_end;
+    brx_float opacity_sample_scale[INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT] = brx_array_constructor_begin(brx_float, INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT) 0.0 brx_array_constructor_split 0.0 brx_array_constructor_split 0.0 brx_array_constructor_end;
+    {
+        const brx_float viewport_depth_direction_texel_space_relative_z_centers[INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT] = brx_array_constructor_begin(brx_float, INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT) - 0.5 brx_array_constructor_split 0.5 brx_array_constructor_split 1.5 brx_array_constructor_end;
+
+#if 8 == BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT
+
+#if defined(GL_SPIRV) || defined(VULKAN)
+        // "Standard Sample Locations" https://registry.khronos.org/vulkan/specs/1.0/html/chap25.html#primsrast-multisampling
+        const brx_float2 sample_positions[BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT] =
+            brx_array_constructor_begin(brx_float2, BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT)
+            brx_float2(0.5625 - 0.5, 0.3125 - 0.5) brx_array_constructor_split
+            brx_float2(0.4375 - 0.5, 0.6875 - 0.5) brx_array_constructor_split
+            brx_float2(0.8125 - 0.5, 0.5625 - 0.5) brx_array_constructor_split
+            brx_float2(0.3125 - 0.5, 0.1875 - 0.5) brx_array_constructor_split
+            brx_float2(0.1875 - 0.5, 0.8125 - 0.5) brx_array_constructor_split
+            brx_float2(0.0625 - 0.5, 0.4375 - 0.5) brx_array_constructor_split
+            brx_float2(0.6875 - 0.5, 0.9375 - 0.5) brx_array_constructor_split
+            brx_float2(0.9375 - 0.5, 0.0625 - 0.5)
+            brx_array_constructor_end;
+#elif defined(HLSL_VERSION) || defined(__HLSL_VERSION)
+        // "Standard Sample Patterns" https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_standard_multisample_quality_levels
+        const brx_float2 sample_positions[BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT] =
+            brx_array_constructor_begin(brx_float2, BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT)
+            brx_float2(1.0 / 16.0, -3.0 / 16.0) brx_array_constructor_split
+            brx_float2(-1.0 / 16.0, 3.0 / 16.0) brx_array_constructor_split
+            brx_float2(5.0 / 16.0, 1.0 / 16.0) brx_array_constructor_split
+            brx_float2(-3.0 / 16.0, -5.0 / 16.0) brx_array_constructor_split
+            brx_float2(-5.0 / 16.0, 5.0 / 16.0) brx_array_constructor_split
+            brx_float2(-7.0 / 16.0, -1.0 / 16.0) brx_array_constructor_split
+            brx_float2(3.0 / 16.0, 7.0 / 16.0) brx_array_constructor_split
+            brx_float2(7.0 / 16.0, -7.0 / 16.0)
+            brx_array_constructor_end;
+#else
+#error Unknown Compiler
+#endif
+
+#else
+#error
+#endif
+
+        // \[Takeshige 2015\] [Masaya Takeshige. "The Basics of GPU Voxelization." NVIDIA GameWorks Blog 2015.](https://developer.nvidia.com/content/basics-gpu-voxelization)
+        // "ddx(depth)" and "ddy(depth)" less than 1.0
+        brx_float2 delta_z = brx_float2(brx_ddx(viewport_depth_direction_texel_space.z), brx_ddy(viewport_depth_direction_texel_space.z));
+        // assert(dZ <= float2(1.0, 1.0))
+
+        brx_float fraction_z = brx_frac(viewport_depth_direction_texel_space.z);
+
+        brx_unroll for (brx_int sample_index = 0; sample_index < brx_int(BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT); ++sample_index)
+        {
+            if (0 != (brx_sample_mask_in & (1u << sample_index)))
+            {
+                brx_float relative_z = fraction_z + brx_dot(delta_z, sample_positions[sample_index]);
+
+                brx_unroll for (brx_int voxel_index = 0; voxel_index < brx_int(INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT); ++voxel_index)
+                {
+                    opacity_sample_scale[voxel_index] += (1.0 / brx_float(BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT)) * brx_clamp(1.0 - brx_abs(relative_z - viewport_depth_direction_texel_space_relative_z_centers[voxel_index]), 0.0, 1.0);
+                }
+            }
+        }
+    }
+
+    brx_float opacity_area_scale;
+    {
+        brx_float3 geometry_abs_normal = brx_abs(brx_normalize(brx_cross(brx_ddx(texel_space), brx_ddy(texel_space))));
+        opacity_area_scale = 1.0 / brx_max((1.0 / brx_sqrt(3.0)), brx_max(geometry_abs_normal.x, brx_max(geometry_abs_normal.y, geometry_abs_normal.z)));
+    }
+
+    for (brx_int voxel_index = 0; voxel_index < brx_int(INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT); ++voxel_index)
+    {
+        brx_int3 voxel_coordinates = brx_int3(texel_space) + offset_direction * voxel_coordinates_offsets[voxel_index];
+
+        brx_float opacity = brx_clamp(surface_opacity * opacity_sample_scale[voxel_index] * opacity_area_scale, 0.0, 1.0);
+
+        brx_branch if ((brx_all(brx_greater_than_equal(voxel_coordinates, brx_int3(0, 0, 0))) && brx_all(brx_less_than(voxel_coordinates, brx_int3(BRX_VCT_CLIPMAP_MAP_SIZE, BRX_VCT_CLIPMAP_MAP_SIZE, BRX_VCT_CLIPMAP_MAP_SIZE)))) && (opacity > brx_float(INTERNAL_BRX_VCT_VOXELIZATION_OPACITY_THRESHOLD)))
+        {
+            {
+                brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+                brx_uint value_monotonic_increment = internal_brx_get_clipmap_opacity_texture_mask(in_clipmap_stack_level_index);
+
+                brx_uint old_value;
+                brx_uint new_value;
+                brx_loop do
+                {
+                    old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+
+                    new_value = (old_value | value_monotonic_increment);
+                }
+                while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
+            }
+
+            {
+                brx_int3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index);
+
+                brx_float value_monotonic_increment = opacity;
+
+                brx_uint old_value_packed;
+                brx_uint new_value_packed;
+                brx_loop do
+                {
+                    old_value_packed = brx_vct_application_bridge_get_clipmap_opacity(opacity_texture_coordinates);
+
+                    brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                    brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                    new_value_packed = brx_float_as_uint(new_value_unpacked);
+                }
+                while (brx_vct_application_bridge_compare_and_swap_clipmap_opacity(opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+            }
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
+            brx_float3 environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT];
+            brx_vct_application_bridge_get_environment_lighting_illumination(surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness, environment_lighting_illumination);
+#endif
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
+            const brx_int direct_lighting_count = brx_vct_application_bridge_get_direct_lighting_count(surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+
+            // Avoid shadow map query multiple times
+            brx_float3 direct_lighting_illuminations[BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT];
+            {
+                brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
+                {
+                    direct_lighting_illuminations[direct_lighting_index] = brx_vct_application_bridge_get_direct_lighting_illumination(direct_lighting_index, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                }
+            }
+#endif
+
+            // PBR Book V3: [Figure 14.14](https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation#BasicDerivation)
+            // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
+            // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
+            //
+            // we view the voxel as 4x4 octahedral map
+            // TODO:
+            // spherical gaussian?
+
+            brx_unroll for (brx_int direction_width_index = 0; direction_width_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT); ++direction_width_index)
+            {
+                brx_unroll for (brx_int direction_height_index = 0; direction_height_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT); ++direction_height_index)
+                {
+                    brx_float3 N = surface_shading_normal_world_space;
+
+                    brx_float3 V;
+                    {
+                        brx_float2 uv = (brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5)) / brx_float2(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT, BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
+
+                        // PBRT-V4: [File Format](https://www.pbrt.org/users-guide-v4#file_format_changes)
+                        // PBRT-V4: [imgtool makeequiarea](https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cmd/imgtool.cpp#L2130)
+                        brx_float2 ndc_flip_x = uv * brx_float2(-2.0, -2.0) + brx_float2(1.0, 1.0);
+
+                        V = brx_octahedral_unmap(ndc_flip_x);
+                    }
+
+                    brx_float NdotV = brx_dot(N, V);
+
+                    brx_branch if (NdotV > 0.0)
+                    {
+                        brx_float3 brdf_mul_delta_phi_div_voxel_area = brx_float3(0.0, 0.0, 0.0);
+
+                        // surface emissive
+                        {
+                            // TODO: theoretical explaination in Photon Mapping?
+                            brdf_mul_delta_phi_div_voxel_area += (surface_emissive);
+                        }
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
+                        {
+                            // TODO: theoretical explaination in Photon Mapping?
+                            brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_environment_lighting_radiance(environment_lighting_illumination, V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                        }
+#endif
+
+#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
+                        // direct lighting
+                        {
+                            brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
+                            {
+                                // Photon Mapping
+                                // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
+                                // during the voxelization step, we calculate the "BRDF * E_n" part
+                                // which happens to be the same as radiance formula in real time rendering
+                                brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_direct_lighting_radiance(direct_lighting_index, direct_lighting_illuminations[direct_lighting_index], V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                            }
+                        }
+#endif
+
+                        // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
+                        // premultiplied alpha value: "BRDF * E_n * VoxelOpacity"
+                        brx_float3 illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
+
+                        brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
+                        {
+                            {
+                                brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+                                brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_texture_mask(direction_width_index, direction_height_index);
+
+                                brx_uint old_value;
+                                brx_uint new_value;
+                                brx_loop do
+                                {
+                                    old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+
+                                    new_value = (old_value | value_monotonic_increment);
+                                }
+                                while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
+                            }
+
+                            {
+                                brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
+
+                                {
+
+                                    brx_float value_monotonic_increment = illumination.x;
+
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_red(illumination_texture_coordinates);
+
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                }
+
+                                {
+
+                                    brx_float value_monotonic_increment = illumination.y;
+
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_green(illumination_texture_coordinates);
+
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                }
+
+                                {
+
+                                    brx_float value_monotonic_increment = illumination.z;
+
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_blue(illumination_texture_coordinates);
+
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+#endif
+        }
+    }
+
+    // discard;
+}
+
+#endif

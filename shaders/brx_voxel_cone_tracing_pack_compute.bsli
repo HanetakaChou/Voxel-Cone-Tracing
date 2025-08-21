@@ -1,0 +1,101 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_PACK_COMPUTE_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_PACK_COMPUTE_BSLI_ 1
+
+#include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+
+brx_uint brx_vct_application_bridge_get_clipmap_mask(in brx_int3 in_mask_texture_coordinates);
+
+brx_float brx_vct_application_bridge_get_clipmap_opacity_r32(in brx_int3 in_opacity_texture_coordinates);
+
+brx_float brx_vct_application_bridge_get_clipmap_illumination_r32(in brx_int3 in_illumination_texture_coordinates);
+
+brx_float brx_vct_application_bridge_get_clipmap_illumination_g32(in brx_int3 in_illumination_texture_coordinates);
+
+brx_float brx_vct_application_bridge_get_clipmap_illumination_b32(in brx_int3 in_illumination_texture_coordinates);
+
+void brx_vct_application_bridge_set_clipmap_opacity_r16(in brx_int3 in_opacity_texture_coordinates, in brx_float in_packed_opacity);
+
+void brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(in brx_int3 in_illumination_texture_coordinates, in brx_float3 in_packed_illumination);
+
+#ifndef BRX_VCT_ENABLE_ILLUMINATION
+#error "0 or 1"
+#endif
+
+#include "../include/brx_voxel_cone_tracing.h"
+#include "brx_voxel_cone_tracing_resource.bsli"
+
+#ifndef INTERNAL_BRX_DISABLE_ROOT_SIGNATURE
+brx_root_signature(brx_voxel_cone_tracing_pack_root_signature_macro, brx_voxel_cone_tracing_pack_root_signature_name)
+#endif
+brx_num_threads(BRX_VOXEL_CONE_TRACING_PACK_THREADGROUP_X, BRX_VOXEL_CONE_TRACING_PACK_THREADGROUP_Y, BRX_VOXEL_CONE_TRACING_PACK_THREADGROUP_Z)
+brx_compute_shader_parameter_begin(main)
+brx_compute_shader_parameter_in_dispatch_thread_id
+brx_compute_shader_parameter_end(main)
+{
+    // pack to reduce the sampling cost in cone tracing
+
+    brx_int3 voxel_coordinates = brx_int3(brx_dispatch_thread_id);
+
+    brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+    brx_uint mask = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+
+    brx_branch if (0u != mask)
+    {
+        brx_unroll for (brx_int clipmap_stack_level_index = 0; clipmap_stack_level_index < brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT); ++clipmap_stack_level_index)
+        {
+            brx_branch if (0u != (mask & internal_brx_get_clipmap_opacity_texture_mask(clipmap_stack_level_index)))
+            {
+                brx_int3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_int(voxel_coordinates, clipmap_stack_level_index);
+
+                // https://github.com/AcademySoftwareFoundation/Imath/blob/main/src/Imath/half.h
+                // HALF_MAX 65504.0
+                brx_float opacity = brx_clamp(brx_vct_application_bridge_get_clipmap_opacity_r32(opacity_texture_coordinates), 0.0, 65504.0);
+
+                brx_vct_application_bridge_set_clipmap_opacity_r16(opacity_texture_coordinates, opacity);
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+                    brx_unroll for (brx_int direction_width_index = 0; direction_width_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT); ++direction_width_index)
+                {
+                    brx_unroll for (brx_int direction_height_index = 0; direction_height_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT); ++direction_height_index)
+                    {
+                        brx_branch if (0u != (mask & internal_brx_get_clipmap_illumination_texture_mask(direction_width_index, direction_height_index)))
+                        {
+                            brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, clipmap_stack_level_index, direction_width_index, direction_height_index);
+
+                            brx_float illumination_red = brx_vct_application_bridge_get_clipmap_illumination_r32(illumination_texture_coordinates);
+                            brx_float illumination_green = brx_vct_application_bridge_get_clipmap_illumination_g32(illumination_texture_coordinates);
+                            brx_float illumination_blue = brx_vct_application_bridge_get_clipmap_illumination_b32(illumination_texture_coordinates);
+
+                            // https://github.com/AcademySoftwareFoundation/Imath/blob/main/src/Imath/half.h
+                            // HALF_MAX 65504.0
+                            brx_float3 illumination = brx_clamp(brx_float3(illumination_red, illumination_green, illumination_blue), brx_float3(0.0, 0.0, 0.0), brx_float3(65504.0, 65504.0, 65504.0));
+
+                            brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(illumination_texture_coordinates, illumination);
+                        }
+                    }
+                }
+#endif
+            }
+        }
+    }
+}
+
+#endif
