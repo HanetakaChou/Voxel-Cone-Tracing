@@ -1,0 +1,90 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_CLEAR_COMPUTE_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_CLEAR_COMPUTE_BSLI_ 1
+
+#include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+
+brx_uint brx_vct_application_bridge_get_clipmap_mask(in brx_int3 in_mask_texture_coordinates);
+
+void brx_vct_application_bridge_set_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_packed_opacity);
+
+void brx_vct_application_bridge_set_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+
+void brx_vct_application_bridge_set_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+
+void brx_vct_application_bridge_set_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+
+void brx_vct_application_bridge_set_clipmap_mask(in brx_int3 in_mask_texture_coordinates, in brx_uint in_mask);
+
+#ifndef BRX_VCT_ENABLE_ILLUMINATION
+#error "0 or 1"
+#endif
+
+#include "../include/brx_voxel_cone_tracing.h"
+#include "brx_voxel_cone_tracing_resource.bsli"
+
+#ifndef INTERNAL_BRX_DISABLE_ROOT_SIGNATURE
+brx_root_signature(brx_voxel_cone_tracing_clear_root_signature_macro, brx_voxel_cone_tracing_clear_root_signature_name)
+#endif
+brx_num_threads(BRX_VOXEL_CONE_TRACING_CLEAR_THREADGROUP_X, BRX_VOXEL_CONE_TRACING_CLEAR_THREADGROUP_Y, BRX_VOXEL_CONE_TRACING_CLEAR_THREADGROUP_Z)
+brx_compute_shader_parameter_begin(main)
+brx_compute_shader_parameter_in_dispatch_thread_id
+brx_compute_shader_parameter_end(main)
+{
+    // TODO:
+    // it is too heavy to clear each texel of the clipmap
+    // perhaps there can be better alternatives
+
+    brx_int3 voxel_coordinates = brx_int3(brx_dispatch_thread_id);
+
+    brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+    brx_uint mask = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+
+    brx_branch if (0u != mask)
+    {
+        brx_unroll for (brx_int clipmap_stack_level_index = 0; clipmap_stack_level_index < brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT); ++clipmap_stack_level_index)
+        {
+            brx_branch if (0u != (mask & internal_brx_get_clipmap_opacity_texture_mask(clipmap_stack_level_index)))
+            {
+                brx_int3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_int(voxel_coordinates, clipmap_stack_level_index);
+
+                brx_vct_application_bridge_set_clipmap_opacity(opacity_texture_coordinates, brx_float_as_uint(0.0));
+
+#if BRX_VCT_ENABLE_ILLUMINATION
+                brx_unroll for (brx_int direction_index = 0; direction_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_COUNT); ++direction_index)
+                {
+                    brx_branch if (0u != (mask & internal_brx_get_clipmap_illumination_texture_mask(direction_index)))
+                    {
+                        brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, clipmap_stack_level_index, direction_index);
+
+                        brx_vct_application_bridge_set_clipmap_illumination_red(illumination_texture_coordinates, brx_float_as_uint(0.0));
+                        brx_vct_application_bridge_set_clipmap_illumination_green(illumination_texture_coordinates, brx_float_as_uint(0.0));
+                        brx_vct_application_bridge_set_clipmap_illumination_blue(illumination_texture_coordinates, brx_float_as_uint(0.0));
+                    }
+                }
+#endif
+            }
+        }
+
+        brx_vct_application_bridge_set_clipmap_mask(mask_texture_coordinates, 0u);
+    }
+}
+
+#endif
