@@ -1,0 +1,63 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_VOXELIZATION_VERTEX_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_VOXELIZATION_VERTEX_BSLI_ 1
+
+#include "../include/brx_voxel_cone_tracing.h"
+
+brx_int brx_voxel_cone_tracing_voxelization_compute_viewport_depth_direction_index(brx_float3 triangle_vertex_position_world_space_a, brx_float3 triangle_vertex_position_world_space_b, brx_float3 triangle_vertex_position_world_space_c)
+{
+    // normalize NOT required here
+    brx_float3 triangle_abs_normal_world_space = brx_abs(brx_cross(triangle_vertex_position_world_space_b - triangle_vertex_position_world_space_a, triangle_vertex_position_world_space_c - triangle_vertex_position_world_space_a));
+
+    // 0 - 2
+    brx_int viewport_depth_direction_index;
+    {
+        // \[Takeshige 2015\] [Masaya Takeshige. "The Basics of GPU Voxelization." NVIDIA GameWorks Blog 2015.](https://developer.nvidia.com/content/basics-gpu-voxelization)
+        // If (the absolute value of) either of these gradients "ddx(depth) or ddy(depth)" exceeds 1.0, then the voxelized plane will have "cracks" in a direction perpendicular to the depth direction.
+
+        brx_branch if ((triangle_abs_normal_world_space.z >= triangle_abs_normal_world_space.x) && (triangle_abs_normal_world_space.z >= triangle_abs_normal_world_space.y))
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Z;
+        }
+        else if (triangle_abs_normal_world_space.y >= triangle_abs_normal_world_space.x)
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Y;
+        }
+        else
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_X;
+        }
+    }
+
+    return viewport_depth_direction_index;
+}
+
+brx_float2 brx_voxel_cone_tracing_voxelization_compute_cull_distance(brx_float4 vertex_position_clip_space)
+{
+    // "DepthClipEnable" is similiar to "SV_ClipDistance"
+    // The whole primitive will be clipped as long as one of the three vertices are clipped.
+    brx_float2 cull_distance;
+    // Depth Direction
+    // assert(1.0 == vertex_position_clip_space.w)
+    cull_distance.x = vertex_position_clip_space.z - (-1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5));
+    cull_distance.y = (1.0 + 1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5)) - vertex_position_clip_space.z;
+    return cull_distance;
+}
+
+#endif
