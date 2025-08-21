@@ -1,0 +1,106 @@
+//
+// Copyright (C) YuqiaoZhang(HanetakaChou)
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#ifndef _BRX_VOXEL_CONE_TRACING_VOXELIZATION_VERTEX_BSLI_
+#define _BRX_VOXEL_CONE_TRACING_VOXELIZATION_VERTEX_BSLI_ 1
+
+#include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+
+void brx_vct_application_bridge_get_triangle_vertices(in brx_uint in_triangle_index, out brx_float3 out_triangle_vertex_position_world_space_a, out brx_float3 out_triangle_vertex_position_world_space_b, out brx_float3 out_triangle_vertex_position_world_space_c);
+
+void brx_vct_application_bridge_get_vertex(in brx_uint in_vertex_index, out brx_float3 out_vertex_position_world_space, out brx_float3 out_vertex_normal_world_space, out brx_float4 out_vertex_tangent_world_space, out brx_float2 out_vertex_texcoord);
+
+brx_float4x4 brx_vct_application_bridge_get_viewport_depth_direction_view_matrix(in brx_int in_viewport_depth_direction_index);
+
+brx_float4x4 brx_vct_application_bridge_get_clipmap_stack_level_projection_matrix(in brx_int in_clipmap_stack_level_index);
+
+#include "../include/brx_voxel_cone_tracing.h"
+
+#ifndef INTERNAL_BRX_DISABLE_ROOT_SIGNATURE
+brx_root_signature(brx_voxel_cone_tracing_voxelization_root_signature_macro, brx_voxel_cone_tracing_voxelization_root_signature_name)
+#endif
+brx_vertex_shader_parameter_begin(main)
+brx_vertex_shader_parameter_in_vertex_index brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_in_instance_index brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out_position brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out_cull_distance brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_flat_out(brx_int, out_viewport_depth_direction_index, 0) brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_flat_out(brx_int, out_clipmap_stack_level_index, 1) brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out(brx_float3, out_vertex_position_world_space, 2) brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out(brx_float3, out_vertex_normal, 3) brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out(brx_float4, out_vertex_tangent, 4) brx_vertex_shader_parameter_split
+brx_vertex_shader_parameter_out(brx_float2, out_vertex_texcoord, 5) 
+brx_vertex_shader_parameter_end(main)
+{
+    brx_float3 triangle_vertices_position_world_space[3];
+    brx_vct_application_bridge_get_triangle_vertices((brx_uint(brx_vertex_index) / 3u), triangle_vertices_position_world_space[0], triangle_vertices_position_world_space[1], triangle_vertices_position_world_space[2]);
+
+    brx_int viewport_depth_direction_index;
+    {
+        // normalize NOT required here
+        brx_float3 triangle_abs_normal_world_space = brx_abs(brx_cross(triangle_vertices_position_world_space[1] - triangle_vertices_position_world_space[0], triangle_vertices_position_world_space[2] - triangle_vertices_position_world_space[0]));
+
+        // \[Takeshige 2015\] [Masaya Takeshige. "The Basics of GPU Voxelization." NVIDIA GameWorks Blog 2015.](https://developer.nvidia.com/content/basics-gpu-voxelization)
+        // make sure "ddx(depth)" and "ddy(depth)" less than 1.0 to avoid cracks
+        brx_branch if ((triangle_abs_normal_world_space.z >= triangle_abs_normal_world_space.x) && (triangle_abs_normal_world_space.z >= triangle_abs_normal_world_space.y))
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Z;
+        }
+        else if (triangle_abs_normal_world_space.y >= triangle_abs_normal_world_space.x)
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_Y;
+        }
+        else
+        {
+            viewport_depth_direction_index = BRX_VCT_VIEWPORT_DEPTH_DIRECTION_AXIS_X;
+        }
+    }
+
+    brx_int clipmap_stack_level_index = brx_instance_index;
+
+    brx_float3 vertex_position_world_space;
+    brx_float3 vertex_normal_world_space;
+    brx_float4 vertex_tangent_world_space;
+    brx_float2 vertex_texcoord;
+    brx_vct_application_bridge_get_vertex(brx_uint(brx_vertex_index), vertex_position_world_space, vertex_normal_world_space, vertex_tangent_world_space, vertex_texcoord);
+
+    brx_float3 vertex_position_view_space = brx_mul(brx_vct_application_bridge_get_viewport_depth_direction_view_matrix(viewport_depth_direction_index), brx_float4(vertex_position_world_space, 1.0)).xyz;
+    
+    brx_float4 vertex_position_clip_space = brx_mul(brx_vct_application_bridge_get_clipmap_stack_level_projection_matrix(clipmap_stack_level_index), brx_float4(vertex_position_view_space, 1.0));
+
+    brx_float2 cull_distance;
+    {
+        // "DepthClipEnable" is similiar to "SV_ClipDistance"
+        // The whole primitive will be clipped as long as one of the three vertices are clipped.
+        // Depth Direction
+        // assert(1.0 == vertex_position_clip_space.w)
+        cull_distance.x = vertex_position_clip_space.z - (-1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5));
+        cull_distance.y = (1.0 + 1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5)) - vertex_position_clip_space.z;
+    }
+
+    brx_position = vertex_position_clip_space;
+    brx_cull_distance[0] = cull_distance.x;
+    brx_cull_distance[1] = cull_distance.y;
+    out_viewport_depth_direction_index = viewport_depth_direction_index;
+    out_clipmap_stack_level_index = clipmap_stack_level_index;
+    out_vertex_position_world_space = vertex_position_world_space;
+    out_vertex_normal = vertex_normal_world_space;
+    out_vertex_tangent = vertex_tangent_world_space;
+    out_vertex_texcoord = vertex_texcoord;
+}
+
+#endif
