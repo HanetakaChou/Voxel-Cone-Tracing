@@ -86,6 +86,7 @@ brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(i
 
 #include "../include/brx_voxel_cone_tracing.h"
 #include "brx_voxel_cone_tracing_resource.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_octahedral_mapping.bsli"
 
 #define INTERNAL_BRX_VCT_VOXELIZATION_PIXEL_MAXIMUM_VOXEL_COUNT 3
 
@@ -286,142 +287,139 @@ brx_pixel_shader_parameter_end(main)
             // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
             // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
             //
-            // we view the voxel as 3x3 octahedral map
+            // we view the voxel as 4x4 octahedral map
             // TODO:
             // spherical gaussian?
-            const brx_float3 voxel_outgoing_directions[BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_COUNT] =
-                brx_array_constructor_begin(brx_float3, BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_COUNT)
-                // 0
-                brx_float3(1.0, 0.0, 0.0) brx_array_constructor_split
-                // 1
-                brx_float3(0.0, 1.0, 0.0) brx_array_constructor_split
-                // 2
-                brx_float3(0.0, 0.0, 1.0) brx_array_constructor_split
-                // 3
-                brx_float3(-1.0, 0.0, 0.0) brx_array_constructor_split
-                // 4
-                brx_float3(0.0, -1.0, 0.0) brx_array_constructor_split
-                // 5
-                brx_float3(0.0, 0.0, -1.0)
-                brx_array_constructor_end;
 
-            brx_unroll for (brx_int direction_index = 0; direction_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_COUNT); ++direction_index)
+            brx_unroll for (brx_int direction_width_index = 0; direction_width_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT); ++direction_width_index)
             {
-                brx_float3 N = surface_shading_normal_world_space;
-                brx_float3 V = voxel_outgoing_directions[direction_index];
-                brx_float NdotV = brx_dot(N, V);
-
-                brx_branch if (NdotV > 0.0)
+                brx_unroll for (brx_int direction_height_index = 0; direction_height_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT); ++direction_height_index)
                 {
-                    brx_float3 brdf_mul_delta_phi_div_voxel_area = brx_float3(0.0, 0.0, 0.0);
+                    brx_float3 N = surface_shading_normal_world_space;
 
-                    // surface emissive
+                    brx_float3 V;
                     {
-                        // TODO: theoretical explaination in Photon Mapping?
-                        brdf_mul_delta_phi_div_voxel_area += (surface_emissive);
+                        brx_float2 uv = (brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5)) / brx_float2(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT, BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
+
+                        brx_float2 ndc_flip_y = uv * brx_float2(2.0, 2.0) + brx_float2(-1.0, -1.0);
+
+                        V = brx_octahedral_unmap(ndc_flip_y);
                     }
+
+                    brx_float NdotV = brx_dot(N, V);
+
+                    brx_branch if (NdotV > 0.0)
+                    {
+                        brx_float3 brdf_mul_delta_phi_div_voxel_area = brx_float3(0.0, 0.0, 0.0);
+
+                        // surface emissive
+                        {
+                            // TODO: theoretical explaination in Photon Mapping?
+                            brdf_mul_delta_phi_div_voxel_area += (surface_emissive);
+                        }
 
 #if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
-                    {
-                        // TODO: theoretical explaination in Photon Mapping?
-                        brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_environment_lighting_radiance(environment_lighting_illumination, V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
-                    }
+                        {
+                            // TODO: theoretical explaination in Photon Mapping?
+                            brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_environment_lighting_radiance(environment_lighting_illumination, V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                        }
 #endif
 
 #if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
-                    // direct lighting
-                    {
-                        brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
+                        // direct lighting
                         {
-                            // Photon Mapping
-                            // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
-                            // during the voxelization step, we calculate the "BRDF * E_n" part
-                            // which happens to be the same as radiance formula in real time rendering
-                            brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_direct_lighting_radiance(direct_lighting_index, direct_lighting_illuminations[direct_lighting_index], V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                            brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
+                            {
+                                // Photon Mapping
+                                // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
+                                // during the voxelization step, we calculate the "BRDF * E_n" part
+                                // which happens to be the same as radiance formula in real time rendering
+                                brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_direct_lighting_radiance(direct_lighting_index, direct_lighting_illuminations[direct_lighting_index], V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
+                            }
                         }
-                    }
 #endif
 
-                    // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
-                    // premultiplied alpha value: "BRDF * E_n * VoxelOpacity"
-                    brx_float3 illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
+                        // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
+                        // premultiplied alpha value: "BRDF * E_n * VoxelOpacity"
+                        brx_float3 illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
 
-                    brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
-                    {
+                        brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
                         {
-                            brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
-
-                            brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_texture_mask(direction_index);
-
-                            brx_uint old_value;
-                            brx_uint new_value;
-                            brx_loop do
                             {
-                                old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+                                brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
 
-                                new_value = (old_value | value_monotonic_increment);
-                            }
-                            while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
-                        }
+                                brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_texture_mask(direction_width_index, direction_height_index);
 
-                        {
-                            brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_index);
-
-                            {
-
-                                brx_float value_monotonic_increment = illumination.x;
-
-                                brx_uint old_value_packed;
-                                brx_uint new_value_packed;
+                                brx_uint old_value;
+                                brx_uint new_value;
                                 brx_loop do
                                 {
-                                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_red(illumination_texture_coordinates);
+                                    old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
 
-                                    brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
-
-                                    brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
-
-                                    new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    new_value = (old_value | value_monotonic_increment);
                                 }
-                                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
                             }
 
                             {
+                                brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
 
-                                brx_float value_monotonic_increment = illumination.y;
-
-                                brx_uint old_value_packed;
-                                brx_uint new_value_packed;
-                                brx_loop do
                                 {
-                                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_green(illumination_texture_coordinates);
 
-                                    brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+                                    brx_float value_monotonic_increment = illumination.x;
 
-                                    brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_red(illumination_texture_coordinates);
 
-                                    new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
                                 }
-                                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
-                            }
 
-                            {
-
-                                brx_float value_monotonic_increment = illumination.z;
-
-                                brx_uint old_value_packed;
-                                brx_uint new_value_packed;
-                                brx_loop do
                                 {
-                                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_blue(illumination_texture_coordinates);
 
-                                    brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+                                    brx_float value_monotonic_increment = illumination.y;
 
-                                    brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_green(illumination_texture_coordinates);
 
-                                    new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
                                 }
-                                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+
+                                {
+
+                                    brx_float value_monotonic_increment = illumination.z;
+
+                                    brx_uint old_value_packed;
+                                    brx_uint new_value_packed;
+                                    brx_loop do
+                                    {
+                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_blue(illumination_texture_coordinates);
+
+                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
+
+                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
+                                    }
+                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                }
                             }
                         }
                     }

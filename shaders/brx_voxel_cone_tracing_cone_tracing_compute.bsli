@@ -62,11 +62,7 @@ brx_float brx_vct_application_bridge_get_clipmap_opacity(in brx_float3 in_opacit
 
 #if BRX_VCT_ENABLE_ILLUMINATION
 
-brx_float brx_vct_application_bridge_get_clipmap_illumination_red(in brx_float3 in_illumination_texture_coordinates);
-
-brx_float brx_vct_application_bridge_get_clipmap_illumination_green(in brx_float3 in_illumination_texture_coordinates);
-
-brx_float brx_vct_application_bridge_get_clipmap_illumination_blue(in brx_float3 in_illumination_texture_coordinates);
+brx_float3 brx_vct_application_bridge_get_clipmap_illumination(in brx_float3 in_illumination_texture_coordinates);
 
 #endif
 
@@ -74,6 +70,7 @@ void brx_vct_application_bridge_set_radiance_and_ambient_occlusion(in brx_int2 i
 
 #include "../include/brx_voxel_cone_tracing.h"
 #include "brx_voxel_cone_tracing_resource.bsli"
+#include "../../Brioche-Shader-Language/shaders/brx_octahedral_mapping.bsli"
 
 brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_world_space, brx_float initial_cone_height_voxel_space, brx_float3 cone_axis_direction, brx_float cone_ratio, brx_float cone_height_voxel_space_monotonic_increment_scale, brx_float ambient_occlusion_exponential_distribution_rate_parameter);
 
@@ -594,7 +591,10 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
 
                     brx_float integer_level_opacity;
                     {
-                        brx_float3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_float(voxel_coordinates, stack_level, mip_level);
+                        brx_float3 opacity_texture_coordinates = brx_float3(
+                            voxel_coordinates.x,
+                            voxel_coordinates.y,
+                            voxel_coordinates.z + brx_float((brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * stack_level + brx_int(brx_uint(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) - (brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> mip_level)) << 1) + (brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * mip_level + brx_int(BRX_VCT_CLIPMAP_MARGIN)));
 
                         integer_level_opacity = brx_clamp(brx_vct_application_bridge_get_clipmap_opacity(opacity_texture_coordinates), 0.0, 1.0);
                     }
@@ -605,50 +605,97 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
                     brx_float3 integer_level_illumination;
                     brx_branch if (integer_level_opacity > brx_float(INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD))
                     {
-                        brx_float direction_weights[3];
-                        {
-                            // we view the voxel as 3x3 octahedral map
-                            // TODO:
-                            // spherical gaussian?
-                            brx_float3 abs_cone_direction = brx_abs(cone_axis_direction);
-                            brx_float manhattan_norm = abs_cone_direction.x + abs_cone_direction.y + abs_cone_direction.z;
-                            direction_weights[0] = abs_cone_direction.x / manhattan_norm;
-                            direction_weights[1] = abs_cone_direction.y / manhattan_norm;
-                            direction_weights[2] = abs_cone_direction.z / manhattan_norm;
-                        }
-
-                        brx_int direction_indices[3];
+                        brx_float direction_width_index;
+                        brx_float direction_height_index;
                         {
                             // PBR Book V3: [Figure 14.14](https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation#BasicDerivation)
                             // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
                             // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
-                            direction_indices[0] = cone_axis_direction.x >= 0.0 ? 3 : 0;
-                            direction_indices[1] = cone_axis_direction.y >= 0.0 ? 4 : 1;
-                            direction_indices[2] = cone_axis_direction.z >= 0.0 ? 5 : 2;
+                            brx_float2 ndc_flip_y = brx_octahedral_map(-cone_axis_direction);
+
+                            brx_float2 uv = (ndc_flip_y + brx_float2(1.0, 1.0)) * brx_float2(0.5, 0.5);
+
+                            direction_width_index = uv.x * brx_float(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT);
+                            direction_height_index = uv.y * brx_float(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
                         }
 
-                        brx_float3 illumination = brx_float3(0.0, 0.0, 0.0);
-
-                        // TODO: can we merge the three channels into the same pixel to reduce sample count?
-
-                        brx_unroll for (brx_int direction_component_index = 0; direction_component_index < 3; ++direction_component_index)
+#if 0
+                        // smooth sampling
                         {
-                            brx_float direction_weight = direction_weights[direction_component_index];
+                            brx_float2 uv = brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5);
 
-                            brx_int direction_index = direction_indices[direction_component_index];
+                            brx_float2 integer_uv = brx_floor(uv);
+                            brx_float2 fraction_uv = brx_frac(uv);
 
-                            brx_float3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, direction_index);
+                            fraction_uv = brx_smoothstep(brx_float2(0.0, 0.0), brx_float2(1.0, 1.0), fraction_uv);
+                            uv = integer_uv + fraction_uv;
 
-                            brx_float illumination_red = brx_max(0.0, brx_vct_application_bridge_get_clipmap_illumination_red(illumination_texture_coordinates));
-                            brx_float illumination_green = brx_max(0.0, brx_vct_application_bridge_get_clipmap_illumination_green(illumination_texture_coordinates));
-                            brx_float illumination_blue = brx_max(0.0, brx_vct_application_bridge_get_clipmap_illumination_blue(illumination_texture_coordinates));
+                            direction_width_index = uv.x - 0.5;
+                            direction_height_index = uv.y - 0.5;
+                        }
+#endif
 
-                            illumination.x += (illumination_red * direction_weight);
-                            illumination.y += (illumination_green * direction_weight);
-                            illumination.z += (illumination_blue * direction_weight);
+                        brx_int integer_direction_width_indices[2];
+                        brx_float integer_direction_width_weights[2];
+                        {
+                            brx_float biased_direction_width_index = direction_width_index + 0.5;
+
+                            brx_int integer_direction_width_index = brx_int(brx_floor(biased_direction_width_index));
+                            brx_float fraction_direction_width_index = brx_frac(biased_direction_width_index);
+
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT - 1))
+                            integer_direction_width_indices[0] = brx_int(brx_uint(integer_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+                            integer_direction_width_indices[1] = brx_int(brx_uint(integer_direction_width_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+#else
+                            integer_direction_width_indices[0] = brx_int(brx_uint(integer_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+                            integer_direction_width_indices[1] = brx_int(brx_uint(integer_direction_width_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+#endif
+                            integer_direction_width_weights[0] = 1.0 - fraction_direction_width_index;
+                            integer_direction_width_weights[1] = fraction_direction_width_index;
                         }
 
-                        integer_level_illumination = illumination;
+                        brx_int integer_direction_height_indices[2];
+                        brx_float integer_direction_height_weights[2];
+                        {
+                            brx_float biased_direction_height_index = direction_height_index + 0.5;
+
+                            brx_int integer_direction_height_index = brx_int(brx_floor(biased_direction_height_index));
+                            brx_float fraction_direction_height_index = brx_frac(biased_direction_height_index);
+
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT - 1))
+                            integer_direction_height_indices[0] = brx_int(brx_uint(integer_direction_height_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1));
+                            integer_direction_height_indices[1] = brx_int(brx_uint(integer_direction_height_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1));
+#else
+                            integer_direction_height_indices[0] = brx_int(brx_uint(integer_direction_height_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT) - 1) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT));
+                            integer_direction_height_indices[1] = brx_int(brx_uint(integer_direction_height_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT));
+#endif
+                            integer_direction_height_weights[0] = 1.0 - fraction_direction_height_index;
+                            integer_direction_height_weights[1] = fraction_direction_height_index;
+                        }
+
+                        brx_float3 illumination_four = brx_float3(0.0, 0.0, 0.0);
+
+                        brx_unroll for (brx_int integer_direction_width_index_index = 0; integer_direction_width_index_index < 2; ++integer_direction_width_index_index)
+                        {
+                            brx_unroll for (brx_int integer_direction_height_index_index = 0; integer_direction_height_index_index < 2; ++integer_direction_height_index_index)
+                            {
+                                brx_int integer_direction_width_index = integer_direction_width_indices[integer_direction_width_index_index];
+                                brx_float integer_direction_width_weight = integer_direction_width_weights[integer_direction_width_index_index];
+
+                                brx_int integer_direction_height_index = integer_direction_height_indices[integer_direction_height_index_index];
+                                brx_float integer_direction_height_weight = integer_direction_height_weights[integer_direction_height_index_index];
+
+                                brx_float3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, integer_direction_width_index, integer_direction_height_index);
+
+                                // TODO: can we merge the three channels into the same pixel to reduce sample count?
+
+                                brx_float3 illumination_one_of_four = brx_max(0.0, brx_vct_application_bridge_get_clipmap_illumination(illumination_texture_coordinates));
+
+                                illumination_four += (illumination_one_of_four * integer_direction_width_weight * integer_direction_height_weight);
+                            }
+                        }
+
+                        integer_level_illumination = illumination_four;
                     }
                     else
                     {

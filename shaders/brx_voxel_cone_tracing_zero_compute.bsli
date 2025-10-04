@@ -24,21 +24,29 @@ brx_int3 brx_vct_application_bridge_get_clipmap_mask_dimension();
 
 void brx_vct_application_bridge_set_clipmap_mask(in brx_int3 in_mask_texture_coordinates, in brx_uint in_mask);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_opacity_dimension();
+brx_int3 brx_vct_application_bridge_get_clipmap_opacity_r32_dimension();
 
-void brx_vct_application_bridge_set_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_packed_opacity);
+void brx_vct_application_bridge_set_clipmap_opacity_r32(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_packed_opacity);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_dimension_red();
+brx_int3 brx_vct_application_bridge_get_clipmap_opacity_r16_dimension();
 
-void brx_vct_application_bridge_set_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+void brx_vct_application_bridge_set_clipmap_opacity_r16(in brx_int3 in_opacity_texture_coordinates, in brx_float in_packed_opacity);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_dimension_green();
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_r32_dimension();
 
-void brx_vct_application_bridge_set_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+void brx_vct_application_bridge_set_clipmap_illumination_r32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_dimension_blue();
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_g32_dimension();
 
-void brx_vct_application_bridge_set_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+void brx_vct_application_bridge_set_clipmap_illumination_g32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_b32_dimension();
+
+void brx_vct_application_bridge_set_clipmap_illumination_b32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_r16g16b16_dimension();
+
+void brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(in brx_int3 in_illumination_texture_coordinates, in brx_float3 in_packed_illumination);
 
 #include "../include/brx_voxel_cone_tracing.h"
 
@@ -59,32 +67,46 @@ brx_compute_shader_parameter_end(main)
         brx_vct_application_bridge_set_clipmap_mask(texture_coordinates, 0u);
     }
 
-    brx_int3 clipmap_texture_opacity_dimension = brx_vct_application_bridge_get_clipmap_opacity_dimension();
+    brx_int3 clipmap_texture_opacity_r32_dimension = brx_vct_application_bridge_get_clipmap_opacity_r32_dimension();
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_opacity_dimension)))
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_opacity_r32_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_opacity(texture_coordinates, brx_float_as_uint(0.0));
+        brx_vct_application_bridge_set_clipmap_opacity_r32(texture_coordinates, brx_float_as_uint(0.0));
     }
 
-    brx_int3 clipmap_texture_illumination_dimension_red = brx_vct_application_bridge_get_clipmap_illumination_dimension_red();
+    brx_int3 clipmap_texture_opacity_r16_dimension = brx_vct_application_bridge_get_clipmap_opacity_r16_dimension();
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_dimension_red)))
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_opacity_r16_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_illumination_red(texture_coordinates, brx_float_as_uint(0.0));
+        brx_vct_application_bridge_set_clipmap_opacity_r16(texture_coordinates, 0.0);
     }
 
-    brx_int3 clipmap_texture_illumination_dimension_green = brx_vct_application_bridge_get_clipmap_illumination_dimension_green();
+    brx_int3 clipmap_texture_illumination_r32_dimension = brx_vct_application_bridge_get_clipmap_illumination_r32_dimension();
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_dimension_green)))
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_r32_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_illumination_green(texture_coordinates, brx_float_as_uint(0.0));
+        brx_vct_application_bridge_set_clipmap_illumination_r32(texture_coordinates, brx_float_as_uint(0.0));
     }
 
-    brx_int3 clipmap_texture_illumination_dimension_blue = brx_vct_application_bridge_get_clipmap_illumination_dimension_blue();
+    brx_int3 clipmap_texture_illumination_g32_dimension = brx_vct_application_bridge_get_clipmap_illumination_g32_dimension();
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_dimension_blue)))
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_g32_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_illumination_blue(texture_coordinates, brx_float_as_uint(0.0));
+        brx_vct_application_bridge_set_clipmap_illumination_g32(texture_coordinates, brx_float_as_uint(0.0));
+    }
+
+    brx_int3 clipmap_texture_illumination_b32_dimension = brx_vct_application_bridge_get_clipmap_illumination_b32_dimension();
+
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_b32_dimension)))
+    {
+        brx_vct_application_bridge_set_clipmap_illumination_b32(texture_coordinates, brx_float_as_uint(0.0));
+    }
+
+    brx_int3 clipmap_texture_illumination_r16g16b16_dimension = brx_vct_application_bridge_get_clipmap_illumination_r16g16b16_dimension();
+
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_r16g16b16_dimension)))
+    {
+        brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(texture_coordinates, brx_float3(0.0, 0.0, 0.0));
     }
 }
 

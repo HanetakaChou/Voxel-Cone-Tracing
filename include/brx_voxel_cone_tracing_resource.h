@@ -39,8 +39,8 @@ static inline DirectX::XMUINT3 brx_voxel_cone_tracing_resource_clipmap_opacity_t
 static inline DirectX::XMUINT3 brx_voxel_cone_tracing_resource_clipmap_illumination_texture_extent()
 {
     return DirectX::XMUINT3(
-        (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_COUNT,
-        (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * 1,
+        (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT,
+        (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT,
         ((static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * (static_cast<uint32_t>(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT) - 1) + ((static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) - (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MAP_SIZE) >> (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MIP_LEVEL_COUNT) + 1))) << 1) + (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN) + static_cast<uint32_t>(BRX_VCT_CLIPMAP_MARGIN)) * (static_cast<uint32_t>(BRX_VCT_CLIPMAP_MIP_LEVEL_COUNT) + 1)));
 }
 
