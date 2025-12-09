@@ -25,15 +25,13 @@ static inline DirectX::XMUINT3 brx_voxel_cone_tracing_zero_dispatch_extent()
 {
     DirectX::XMUINT3 const clipmap_mask_texture_extent = brx_voxel_cone_tracing_resource_clipmap_mask_texture_extent();
 
-    DirectX::XMUINT3 const clipmap_opacity_texture_extent = brx_voxel_cone_tracing_resource_clipmap_opacity_texture_extent();
+    DirectX::XMUINT3 const clipmap_illumination_opacity_texture_extent = brx_voxel_cone_tracing_resource_clipmap_illumination_opacity_texture_extent();
 
-    DirectX::XMUINT3 const clipmap_illumination_texture_extent = brx_voxel_cone_tracing_resource_clipmap_illumination_texture_extent();
+    uint32_t const clipmap_maximum_extent_x = std::max(clipmap_mask_texture_extent.x, clipmap_illumination_opacity_texture_extent.x);
 
-    uint32_t const clipmap_maximum_extent_x = std::max(std::max(clipmap_mask_texture_extent.x, clipmap_opacity_texture_extent.x), clipmap_illumination_texture_extent.x);
+    uint32_t const clipmap_maximum_extent_y = std::max(clipmap_mask_texture_extent.y, clipmap_illumination_opacity_texture_extent.y);
 
-    uint32_t const clipmap_maximum_extent_y = std::max(std::max(clipmap_mask_texture_extent.y, clipmap_opacity_texture_extent.y), clipmap_illumination_texture_extent.y);
-
-    uint32_t const clipmap_maximum_extent_z = std::max(std::max(clipmap_mask_texture_extent.z, clipmap_opacity_texture_extent.z), clipmap_illumination_texture_extent.z);
+    uint32_t const clipmap_maximum_extent_z = std::max(clipmap_mask_texture_extent.z, clipmap_illumination_opacity_texture_extent.z);
 
     return DirectX::XMUINT3(
         (clipmap_maximum_extent_x + static_cast<uint32_t>(BRX_VOXEL_CONE_TRACING_ZERO_THREADGROUP_X) - 1U) / static_cast<uint32_t>(BRX_VOXEL_CONE_TRACING_ZERO_THREADGROUP_X),

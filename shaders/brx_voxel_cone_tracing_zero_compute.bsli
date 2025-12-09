@@ -18,35 +18,31 @@
 #ifndef _BRX_VOXEL_CONE_TRACING_ZERO_COMPUTE_BSLI_
 #define _BRX_VOXEL_CONE_TRACING_ZERO_COMPUTE_BSLI_ 1
 
+#ifndef BRX_VCT_ENABLE_ILLUMINATION
+#error "0 or 1"
+#endif
+
 #include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
 
 brx_int3 brx_vct_application_bridge_get_clipmap_mask_dimension();
 
 void brx_vct_application_bridge_set_clipmap_mask(in brx_int3 in_mask_texture_coordinates, in brx_uint in_mask);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_opacity_r32_dimension();
+#if BRX_VCT_ENABLE_ILLUMINATION
 
-void brx_vct_application_bridge_set_clipmap_opacity_r32(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_packed_opacity);
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_opacity_r16g16_dimension();
 
-brx_int3 brx_vct_application_bridge_get_clipmap_opacity_r16_dimension();
+void brx_vct_application_bridge_set_clipmap_illumination_opacity_r16g16(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_uint in_packed_illumination_opacity_red_green);
 
-void brx_vct_application_bridge_set_clipmap_opacity_r16(in brx_int3 in_opacity_texture_coordinates, in brx_float in_packed_opacity);
+#endif
 
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_r32_dimension();
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_opacity_b16a16_dimension();
 
-void brx_vct_application_bridge_set_clipmap_illumination_r32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
+void brx_vct_application_bridge_set_clipmap_illumination_opacity_b16a16(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_uint in_packed_illumination_opacity_blue_alpha);
 
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_g32_dimension();
+brx_int3 brx_vct_application_bridge_get_clipmap_illumination_opacity_r16g16b16a16_dimension();
 
-void brx_vct_application_bridge_set_clipmap_illumination_g32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
-
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_b32_dimension();
-
-void brx_vct_application_bridge_set_clipmap_illumination_b32(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_packed_illumination);
-
-brx_int3 brx_vct_application_bridge_get_clipmap_illumination_r16g16b16_dimension();
-
-void brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(in brx_int3 in_illumination_texture_coordinates, in brx_float3 in_packed_illumination);
+void brx_vct_application_bridge_set_clipmap_illumination_opacity_r16g16b16a16(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_float4 in_illumination_opacity);
 
 #include "../include/brx_voxel_cone_tracing.h"
 
@@ -67,46 +63,29 @@ brx_compute_shader_parameter_end(main)
         brx_vct_application_bridge_set_clipmap_mask(texture_coordinates, 0u);
     }
 
-    brx_int3 clipmap_texture_opacity_r32_dimension = brx_vct_application_bridge_get_clipmap_opacity_r32_dimension();
+#if BRX_VCT_ENABLE_ILLUMINATION
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_opacity_r32_dimension)))
+    brx_int3 clipmap_texture_illumination_opacity_r16g16_dimension = brx_vct_application_bridge_get_clipmap_illumination_opacity_r16g16_dimension();
+
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_opacity_r16g16_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_opacity_r32(texture_coordinates, brx_float_as_uint(0.0));
+        brx_vct_application_bridge_set_clipmap_illumination_opacity_r16g16(texture_coordinates, brx_pack_half2(brx_float2(0.0, 0.0)));
     }
 
-    brx_int3 clipmap_texture_opacity_r16_dimension = brx_vct_application_bridge_get_clipmap_opacity_r16_dimension();
+#endif
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_opacity_r16_dimension)))
+    brx_int3 clipmap_texture_illumination_opacity_b16a16_dimension = brx_vct_application_bridge_get_clipmap_illumination_opacity_b16a16_dimension();
+
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_opacity_b16a16_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_opacity_r16(texture_coordinates, 0.0);
+        brx_vct_application_bridge_set_clipmap_illumination_opacity_b16a16(texture_coordinates, brx_pack_half2(brx_float2(0.0, 0.0)));
     }
 
-    brx_int3 clipmap_texture_illumination_r32_dimension = brx_vct_application_bridge_get_clipmap_illumination_r32_dimension();
+    brx_int3 clipmap_texture_illumination_opacity_r16g16b16a16_dimension = brx_vct_application_bridge_get_clipmap_illumination_opacity_r16g16b16a16_dimension();
 
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_r32_dimension)))
+    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_opacity_r16g16b16a16_dimension)))
     {
-        brx_vct_application_bridge_set_clipmap_illumination_r32(texture_coordinates, brx_float_as_uint(0.0));
-    }
-
-    brx_int3 clipmap_texture_illumination_g32_dimension = brx_vct_application_bridge_get_clipmap_illumination_g32_dimension();
-
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_g32_dimension)))
-    {
-        brx_vct_application_bridge_set_clipmap_illumination_g32(texture_coordinates, brx_float_as_uint(0.0));
-    }
-
-    brx_int3 clipmap_texture_illumination_b32_dimension = brx_vct_application_bridge_get_clipmap_illumination_b32_dimension();
-
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_b32_dimension)))
-    {
-        brx_vct_application_bridge_set_clipmap_illumination_b32(texture_coordinates, brx_float_as_uint(0.0));
-    }
-
-    brx_int3 clipmap_texture_illumination_r16g16b16_dimension = brx_vct_application_bridge_get_clipmap_illumination_r16g16b16_dimension();
-
-    brx_branch if (brx_all(brx_less_than(texture_coordinates, clipmap_texture_illumination_r16g16b16_dimension)))
-    {
-        brx_vct_application_bridge_set_clipmap_illumination_r16g16b16(texture_coordinates, brx_float3(0.0, 0.0, 0.0));
+        brx_vct_application_bridge_set_clipmap_illumination_opacity_r16g16b16a16(texture_coordinates, brx_float4(0.0, 0.0, 0.0, 0.0));
     }
 }
 
