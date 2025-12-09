@@ -64,25 +64,17 @@ brx_uint brx_vct_application_bridge_get_clipmap_mask(in brx_int3 in_mask_texture
 
 brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_mask(in brx_int3 in_mask_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
 
-brx_uint brx_vct_application_bridge_get_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates);
-
-brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_opacity(in brx_int3 in_opacity_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
-
 #if BRX_VCT_ENABLE_ILLUMINATION
 
-brx_uint brx_vct_application_bridge_get_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates);
+brx_uint brx_vct_application_bridge_get_clipmap_illumination_opacity_red_green(in brx_int3 in_illumination_opacity_texture_coordinates);
 
-brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
-
-brx_uint brx_vct_application_bridge_get_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates);
-
-brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
-
-brx_uint brx_vct_application_bridge_get_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates);
-
-brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(in brx_int3 in_illumination_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_red_green(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
 
 #endif
+
+brx_uint brx_vct_application_bridge_get_clipmap_illumination_opacity_blue_alpha(in brx_int3 in_illumination_opacity_texture_coordinates);
+
+brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_blue_alpha(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
 
 #include "../include/brx_voxel_cone_tracing.h"
 #include "brx_voxel_cone_tracing_resource.bsli"
@@ -102,7 +94,6 @@ brx_root_signature(brx_voxel_cone_tracing_voxelization_root_signature_macro, brx
 brx_pixel_shader_parameter_begin(main)
 brx_pixel_shader_parameter_in_sample_mask_in brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_in_frag_coord brx_pixel_shader_parameter_split
-brx_pixel_shader_parameter_in_cull_distance brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_flat_in(brx_int, in_viewport_depth_direction_index, 0) brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_flat_in(brx_int, in_clipmap_stack_level_index, 1) brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_in(brx_float3, in_interpolated_position_world_space, 2) brx_pixel_shader_parameter_split
@@ -201,7 +192,7 @@ brx_pixel_shader_parameter_end(main)
 
         brx_unroll for (brx_int sample_index = 0; sample_index < brx_int(BRX_VCT_VOXELIZATION_PIXEL_SAMPLE_COUNT); ++sample_index)
         {
-            if (0 != (brx_sample_mask_in & (1u << sample_index)))
+            if (0 != brx_int(brx_uint(brx_sample_mask_in) & (1u << brx_uint(sample_index))))
             {
                 brx_float relative_z = fraction_z + brx_dot(delta_z, sample_positions[sample_index]);
 
@@ -230,7 +221,7 @@ brx_pixel_shader_parameter_end(main)
             {
                 brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
 
-                brx_uint value_monotonic_increment = internal_brx_get_clipmap_opacity_texture_mask(in_clipmap_stack_level_index);
+                brx_uint value_monotonic_increment = internal_brx_get_clipmap_opacity_mask(in_clipmap_stack_level_index);
 
                 brx_uint old_value;
                 brx_uint new_value;
@@ -241,26 +232,6 @@ brx_pixel_shader_parameter_end(main)
                     new_value = (old_value | value_monotonic_increment);
                 }
                 while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
-            }
-
-            {
-                brx_int3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index);
-
-                brx_float value_monotonic_increment = opacity;
-
-                brx_uint old_value_packed;
-                brx_uint new_value_packed;
-                brx_loop do
-                {
-                    old_value_packed = brx_vct_application_bridge_get_clipmap_opacity(opacity_texture_coordinates);
-
-                    brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
-
-                    brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
-
-                    new_value_packed = brx_float_as_uint(new_value_unpacked);
-                }
-                while (brx_vct_application_bridge_compare_and_swap_clipmap_opacity(opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
             }
 
 #if BRX_VCT_ENABLE_ILLUMINATION
@@ -287,13 +258,23 @@ brx_pixel_shader_parameter_end(main)
             // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
             // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
             //
+            // TODO spherical gaussian
             // we view the voxel as 4x4 octahedral map
-            // TODO:
-            // spherical gaussian?
-
-            brx_unroll for (brx_int direction_width_index = 0; direction_width_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT); ++direction_width_index)
+            //
+            // to reduce bandwidth  
+            // we only write the opacity to the zeroth index
+            
+            brx_unroll for (brx_int direction_index = 0; direction_index < (brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT)); ++direction_index)
             {
-                brx_unroll for (brx_int direction_height_index = 0; direction_height_index < brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT); ++direction_height_index)
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT - 1))
+                brx_int direction_width_index = brx_int(brx_uint(direction_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+                brx_int direction_height_index = brx_int(brx_uint(direction_index) >> brx_uint(brx_firstbithigh(brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT))));
+#else
+                brx_int direction_width_index = brx_int(brx_uint(direction_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+                brx_int direction_height_index = brx_int(brx_uint(direction_index) / brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+#endif
+
+                brx_float3 illumination;
                 {
                     brx_float3 N = surface_shading_normal_world_space;
 
@@ -342,90 +323,160 @@ brx_pixel_shader_parameter_end(main)
 #endif
 
                         // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
-                        // premultiplied alpha value: "BRDF * E_n * VoxelOpacity"
-                        brx_float3 illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
+                        // premultiplied alpha color: "BRDF * E_n * VoxelOpacity"
+                        // we have to use the "premultiplied alpha color" because the same voxel can be occupied by multiple triangles
+                        // but the opacity of each triangle should only contribute to the illumination of the same triangle
+                        illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
+                    }
+                    else
+                    {
+                        illumination = brx_float3(0.0, 0.0, 0.0);
+                    }
+                }
 
-                        brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
+                brx_branch if (0 == direction_index)
+                {
+                    brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
+                    {
                         {
+                            brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+                            brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_mask(direction_width_index, direction_height_index);
+
+                            brx_uint old_value;
+                            brx_uint new_value;
+                            brx_loop do
                             {
-                                brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+                                old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
 
-                                brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_texture_mask(direction_width_index, direction_height_index);
+                                new_value = (old_value | value_monotonic_increment);
+                            }
+                            while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
+                        }
 
-                                brx_uint old_value;
-                                brx_uint new_value;
+                        {
+                            brx_int3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
+
+                            brx_float2 value_monotonic_increment = brx_float2(illumination.x, illumination.y);
+
+                            brx_uint old_value_packed;
+                            brx_uint new_value_packed;
+                            brx_loop do
+                            {
+                                old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_opacity_red_green(illumination_opacity_texture_coordinates);
+
+                                brx_float2 old_value_unpacked = brx_unpack_half2(old_value_packed);
+
+                                brx_float2 new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                new_value_packed = brx_pack_half2(new_value_unpacked);
+                            }
+                            while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_red_green(illumination_opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                        }
+                    }
+
+                    {
+                        brx_int3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
+
+                        brx_float2 value_monotonic_increment = brx_float2(illumination.z, opacity);
+
+                        brx_uint old_value_packed;
+                        brx_uint new_value_packed;
+                        brx_loop do
+                        {
+                            old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates);
+
+                            brx_float2 old_value_unpacked = brx_unpack_half2(old_value_packed);
+
+                            brx_float2 new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                            new_value_packed = brx_pack_half2(new_value_unpacked);
+                        }
+                        while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                    }
+                }
+                else
+                {
+                    brx_branch if (brx_any(brx_greater_than(illumination, brx_float3(INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD, INTERNAL_BRX_VCT_VOXELIZATION_ILLUMINATION_THRESHOLD))))
+                    {
+                        {
+                            brx_int3 mask_texture_coordinates = internal_brx_get_clipmap_mask_texture_coordinates_int(voxel_coordinates);
+
+                            brx_uint value_monotonic_increment = internal_brx_get_clipmap_illumination_mask(direction_width_index, direction_height_index);
+
+                            brx_uint old_value;
+                            brx_uint new_value;
+                            brx_loop do
+                            {
+                                old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+
+                                new_value = (old_value | value_monotonic_increment);
+                            }
+                            while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
+                        }
+
+                        {
+                            brx_int3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
+
+                            {
+                                brx_float2 value_monotonic_increment = brx_float2(illumination.x, illumination.y);
+
+                                brx_uint old_value_packed;
+                                brx_uint new_value_packed;
                                 brx_loop do
                                 {
-                                    old_value = brx_vct_application_bridge_get_clipmap_mask(mask_texture_coordinates);
+                                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_opacity_red_green(illumination_opacity_texture_coordinates);
 
-                                    new_value = (old_value | value_monotonic_increment);
+                                    brx_float2 old_value_unpacked = brx_unpack_half2(old_value_packed);
+
+                                    brx_float2 new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                                    new_value_packed = brx_pack_half2(new_value_unpacked);
                                 }
-                                while (brx_vct_application_bridge_compare_and_swap_clipmap_mask(mask_texture_coordinates, old_value, new_value) != old_value);
+                                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_red_green(illumination_opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
                             }
 
                             {
-                                brx_int3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, direction_width_index, direction_height_index);
+                                brx_float2 value_monotonic_increment = brx_float2(illumination.z, 0.0);
 
+                                brx_uint old_value_packed;
+                                brx_uint new_value_packed;
+                                brx_loop do
                                 {
+                                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates);
 
-                                    brx_float value_monotonic_increment = illumination.x;
+                                    brx_float2 old_value_unpacked = brx_unpack_half2(old_value_packed);
 
-                                    brx_uint old_value_packed;
-                                    brx_uint new_value_packed;
-                                    brx_loop do
-                                    {
-                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_red(illumination_texture_coordinates);
+                                    brx_float2 new_value_unpacked = old_value_unpacked + value_monotonic_increment;
 
-                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
-
-                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
-
-                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
-                                    }
-                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_red(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
+                                    new_value_packed = brx_pack_half2(new_value_unpacked);
                                 }
-
-                                {
-
-                                    brx_float value_monotonic_increment = illumination.y;
-
-                                    brx_uint old_value_packed;
-                                    brx_uint new_value_packed;
-                                    brx_loop do
-                                    {
-                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_green(illumination_texture_coordinates);
-
-                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
-
-                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
-
-                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
-                                    }
-                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_green(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
-                                }
-
-                                {
-
-                                    brx_float value_monotonic_increment = illumination.z;
-
-                                    brx_uint old_value_packed;
-                                    brx_uint new_value_packed;
-                                    brx_loop do
-                                    {
-                                        old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_blue(illumination_texture_coordinates);
-
-                                        brx_float old_value_unpacked = brx_uint_as_float(old_value_packed);
-
-                                        brx_float new_value_unpacked = old_value_unpacked + value_monotonic_increment;
-
-                                        new_value_packed = brx_float_as_uint(new_value_unpacked);
-                                    }
-                                    while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_blue(illumination_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
-                                }
+                                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
                             }
                         }
                     }
                 }
+            }
+
+#else
+            {
+                brx_int3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_int(voxel_coordinates, in_clipmap_stack_level_index, 0, 0);
+
+                brx_float2 value_monotonic_increment = brx_float2(0.0, opacity);
+
+                brx_uint old_value_packed;
+                brx_uint new_value_packed;
+                brx_loop do
+                {
+                    old_value_packed = brx_vct_application_bridge_get_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates);
+
+                    brx_float2 old_value_unpacked = brx_unpack_half2(old_value_packed);
+
+                    brx_float2 new_value_unpacked = old_value_unpacked + value_monotonic_increment;
+
+                    new_value_packed = brx_pack_half2(new_value_unpacked);
+                }
+                while (brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_blue_alpha(illumination_opacity_texture_coordinates, old_value_packed, new_value_packed) != old_value_packed);
             }
 #endif
         }

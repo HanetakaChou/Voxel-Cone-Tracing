@@ -58,13 +58,7 @@ brx_float3 brx_vct_application_bridge_get_clipmap_anchor();
 
 brx_float3 brx_vct_application_bridge_get_clipmap_center();
 
-brx_float brx_vct_application_bridge_get_clipmap_opacity(in brx_float3 in_opacity_texture_coordinates);
-
-#if BRX_VCT_ENABLE_ILLUMINATION
-
-brx_float3 brx_vct_application_bridge_get_clipmap_illumination(in brx_float3 in_illumination_texture_coordinates);
-
-#endif
+brx_float4 brx_vct_application_bridge_get_clipmap_illumination_opacity(in brx_float3 in_illumination_opacity_texture_coordinates);
 
 void brx_vct_application_bridge_set_radiance_and_ambient_occlusion(in brx_int2 in_screen_space_coordinates, in brx_float4 in_radiance_and_ambient_occlusion);
 
@@ -537,7 +531,9 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
         }
 
         brx_float sampled_opacity = 0.0;
+#if BRX_VCT_ENABLE_ILLUMINATION
         brx_float3 sampled_illumination = brx_float3(0.0, 0.0, 0.0);
+#endif
         {
             brx_int integer_levels[2];
             brx_float integer_level_weights[2];
@@ -590,18 +586,11 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
                     }
 
                     brx_float integer_level_opacity;
-                    {
-                        brx_float3 opacity_texture_coordinates = internal_brx_get_clipmap_opacity_texture_coordinates_float(voxel_coordinates, stack_level, mip_level);
-
-                        integer_level_opacity = brx_clamp(brx_vct_application_bridge_get_clipmap_opacity(opacity_texture_coordinates), 0.0, 1.0);
-                    }
-
-                    sampled_opacity += (integer_level_opacity * integer_level_weight);
-
 #if BRX_VCT_ENABLE_ILLUMINATION
                     brx_float3 integer_level_illumination;
-                    brx_branch if (integer_level_opacity > brx_float(INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD))
+#endif
                     {
+#if BRX_VCT_ENABLE_ILLUMINATION
                         brx_float direction_width_index;
                         brx_float direction_height_index;
                         {
@@ -672,36 +661,53 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
                             integer_direction_height_weights[1] = fraction_direction_height_index;
                         }
 
-                        brx_float3 illumination_four = brx_float3(0.0, 0.0, 0.0);
+                        brx_float4 illumination_opacity_four = brx_float4(0.0, 0.0, 0.0, 0.0);
 
-                        brx_unroll for (brx_int integer_direction_width_index_index = 0; integer_direction_width_index_index < 2; ++integer_direction_width_index_index)
+                        brx_unroll for (brx_int integer_direction_bilinear_index_index = 0; integer_direction_bilinear_index_index < 4; ++integer_direction_bilinear_index_index)
                         {
-                            brx_unroll for (brx_int integer_direction_height_index_index = 0; integer_direction_height_index_index < 2; ++integer_direction_height_index_index)
+                            brx_int integer_direction_width_index_index = (integer_direction_bilinear_index_index & 1);
+                            brx_int integer_direction_height_index_index = (integer_direction_bilinear_index_index >> 1);
+
+                            brx_int integer_direction_width_index = integer_direction_width_indices[integer_direction_width_index_index];
+                            brx_float integer_direction_width_weight = integer_direction_width_weights[integer_direction_width_index_index];
+
+                            brx_int integer_direction_height_index = integer_direction_height_indices[integer_direction_height_index_index];
+                            brx_float integer_direction_height_weight = integer_direction_height_weights[integer_direction_height_index_index];
+
+                            brx_float3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, integer_direction_width_index, integer_direction_height_index);
+
+                            // https://github.com/AcademySoftwareFoundation/Imath/blob/main/src/Imath/half.h
+                            // HALF_MAX 65504.0
+                            brx_float4 illumination_opacity_one_of_four = brx_clamp(brx_vct_application_bridge_get_clipmap_illumination_opacity(illumination_opacity_texture_coordinates), brx_float4(0.0, 0.0, 0.0, 0.0), brx_float4(65504.0, 65504.0, 65504.0, 1.0));
+
+                            // opacity is the same for all directions
+                            // we can early out when opacity of any sample is NOT above INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD
+                            brx_branch if (illumination_opacity_one_of_four.w < brx_float(INTERNAL_BRX_VCT_CONE_TRACING_OPACITY_THRESHOLD))
                             {
-                                brx_int integer_direction_width_index = integer_direction_width_indices[integer_direction_width_index_index];
-                                brx_float integer_direction_width_weight = integer_direction_width_weights[integer_direction_width_index_index];
-
-                                brx_int integer_direction_height_index = integer_direction_height_indices[integer_direction_height_index_index];
-                                brx_float integer_direction_height_weight = integer_direction_height_weights[integer_direction_height_index_index];
-
-                                brx_float3 illumination_texture_coordinates = internal_brx_get_clipmap_illumination_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, integer_direction_width_index, integer_direction_height_index);
-
-                                brx_float3 illumination_one_of_four = brx_max(brx_float3(0.0, 0.0, 0.0), brx_vct_application_bridge_get_clipmap_illumination(illumination_texture_coordinates));
-
-                                illumination_four += (illumination_one_of_four * integer_direction_width_weight * integer_direction_height_weight);
+                                illumination_opacity_four = brx_float4(0.0, 0.0, 0.0, 0.0);
+                                break;
                             }
+
+                            illumination_opacity_four += (illumination_opacity_one_of_four * integer_direction_width_weight * integer_direction_height_weight);
                         }
 
-                        integer_level_illumination = illumination_four;
-                    }
-                    else
-                    {
-                        integer_level_illumination = brx_float3(0.0, 0.0, 0.0);
+                        integer_level_opacity = illumination_opacity_four.w;
+                        integer_level_illumination = illumination_opacity_four.xyz;
+#else
+                        brx_float3 illumination_opacity_texture_coordinates = internal_brx_get_clipmap_illumination_opacity_texture_coordinates_float(voxel_coordinates, stack_level, mip_level, 0, 0);
+
+                        integer_level_opacity = brx_clamp(brx_vct_application_bridge_get_clipmap_illumination_opacity(illumination_opacity_texture_coordinates).w, 0.0, 1.0);
+#endif
                     }
 
+                    sampled_opacity += (integer_level_opacity * integer_level_weight);
+#if BRX_VCT_ENABLE_ILLUMINATION
+                    // Photon Mapping
+                    // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelOpacity * VoxelSize * VoxelSize
+                    // during the voxelization step, we calculate the "BRDF * E_n * VoxelOpacity" part
+                    // during the cone tracing step, we calculate the "(1 / ConeBaseDiameter * ConeBaseDiameter) * VoxelSize * VoxelSize" part
                     brx_float voxel_size = brx_float(BRX_VCT_CLIPMAP_FINEST_VOXEL_SIZE) * brx_float(1u << integer_level);
                     brx_float voxel_area = voxel_size * voxel_size;
-
                     sampled_illumination += (integer_level_illumination * voxel_area * integer_level_weight);
 #endif
                 }
@@ -720,8 +726,8 @@ brx_float4 internal_brx_trace_cone(brx_float3 initial_cone_base_center_position_
 
 #if BRX_VCT_ENABLE_ILLUMINATION
         // Photon Mapping
-        // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
-        // during the voxelization step, we calculate the "BRDF * E_n" part and the premultiplied alpha "opacity"
+        // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelOpacity * VoxelSize * VoxelSize
+        // during the voxelization step, we calculate the "BRDF * E_n * VoxelOpacity" part
         // during the cone tracing step, we calculate the "(1 / ConeBaseDiameter * ConeBaseDiameter) * VoxelSize * VoxelSize" part
         brx_float3 premultiplied_alpha_color = (1.0 / (sample_size_world_space * sample_size_world_space)) * sampled_illumination;
 

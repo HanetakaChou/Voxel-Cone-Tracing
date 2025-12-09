@@ -20,18 +20,18 @@
 
 #include "../include/brx_voxel_cone_tracing.h"
 
-brx_uint internal_brx_get_clipmap_opacity_texture_mask(brx_int in_clipmap_stack_level_index)
+brx_uint internal_brx_get_clipmap_opacity_mask(brx_int in_clipmap_stack_level_index)
 {
-    brx_uint opacity_texture_mask = (1u << in_clipmap_stack_level_index);
+    brx_uint opacity_mask = (1u << in_clipmap_stack_level_index);
 
-    return opacity_texture_mask;
+    return opacity_mask;
 }
 
-brx_uint internal_brx_get_clipmap_illumination_texture_mask(in brx_int in_direction_width_index, in brx_int in_direction_height_index)
+brx_uint internal_brx_get_clipmap_illumination_mask(in brx_int in_direction_width_index, in brx_int in_direction_height_index)
 {
-    brx_uint illumination_texture_mask = (1u << (in_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * in_direction_height_index + brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT)));
+    brx_uint illumination_mask = (1u << (in_direction_width_index + brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * in_direction_height_index + brx_int(BRX_VCT_CLIPMAP_STACK_LEVEL_COUNT)));
 
-    return illumination_texture_mask;
+    return illumination_mask;
 }
 
 brx_int3 internal_brx_get_clipmap_mask_texture_coordinates_int(in brx_int3 in_voxel_coordinates)
@@ -41,44 +41,24 @@ brx_int3 internal_brx_get_clipmap_mask_texture_coordinates_int(in brx_int3 in_vo
     return mask_texture_coordinates;
 }
 
-brx_int3 internal_brx_get_clipmap_opacity_texture_coordinates_int(in brx_int3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index)
+brx_int3 internal_brx_get_clipmap_illumination_opacity_texture_coordinates_int(in brx_int3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index, in brx_int in_direction_width_index, in brx_int in_direction_height_index)
 {
-    brx_int3 opacity_texture_coordinates = brx_int3(
-        in_voxel_coordinates.x,
-        in_voxel_coordinates.y,
-        in_voxel_coordinates.z + (brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_stack_level_index + brx_int(BRX_VCT_CLIPMAP_MARGIN));
-
-    return opacity_texture_coordinates;
-}
-
-brx_float3 internal_brx_get_clipmap_opacity_texture_coordinates_float(in brx_float3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index, in brx_int in_clipmap_mip_level_index)
-{
-    brx_float3 opacity_texture_coordinates = brx_float3(
-        in_voxel_coordinates.x,
-        in_voxel_coordinates.y,
-        in_voxel_coordinates.z + brx_float((brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_stack_level_index + brx_int(brx_uint(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) - (brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> in_clipmap_mip_level_index)) << 1) + (brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_mip_level_index + brx_int(BRX_VCT_CLIPMAP_MARGIN)));
-
-    return opacity_texture_coordinates;
-}
-
-brx_int3 internal_brx_get_clipmap_illumination_texture_coordinates_int(in brx_int3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index, in brx_int in_direction_width_index, in brx_int in_direction_height_index)
-{
-    brx_int3 illumination_texture_coordinates = brx_int3(
+    brx_int3 illumination_opacity_texture_coordinates = brx_int3(
         in_voxel_coordinates.x + (brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_direction_width_index + brx_int(BRX_VCT_CLIPMAP_MARGIN),
         in_voxel_coordinates.y + (brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_direction_height_index + brx_int(BRX_VCT_CLIPMAP_MARGIN),
         in_voxel_coordinates.z + (brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_stack_level_index + brx_int(BRX_VCT_CLIPMAP_MARGIN));
 
-    return illumination_texture_coordinates;
+    return illumination_opacity_texture_coordinates;
 }
 
-brx_float3 internal_brx_get_clipmap_illumination_texture_coordinates_float(in brx_float3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index, in brx_int in_clipmap_mip_level_index, in brx_int in_direction_width_index, in brx_int in_direction_height_index)
+brx_float3 internal_brx_get_clipmap_illumination_opacity_texture_coordinates_float(in brx_float3 in_voxel_coordinates, in brx_int in_clipmap_stack_level_index, in brx_int in_clipmap_mip_level_index, in brx_int in_direction_width_index, in brx_int in_direction_height_index)
 {
-    brx_float3 illumination_texture_coordinates = brx_float3(
+    brx_float3 illumination_opacity_texture_coordinates = brx_float3(
         in_voxel_coordinates.x + brx_float((brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_direction_width_index + brx_int(BRX_VCT_CLIPMAP_MARGIN)),
         in_voxel_coordinates.y + brx_float((brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_direction_height_index + brx_int(BRX_VCT_CLIPMAP_MARGIN)),
         in_voxel_coordinates.z + brx_float((brx_int(BRX_VCT_CLIPMAP_MAP_SIZE) + brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_stack_level_index + brx_int(brx_uint(brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) - (brx_uint(BRX_VCT_CLIPMAP_MAP_SIZE) >> in_clipmap_mip_level_index)) << 1) + (brx_int(BRX_VCT_CLIPMAP_MARGIN) + brx_int(BRX_VCT_CLIPMAP_MARGIN)) * in_clipmap_mip_level_index + brx_int(BRX_VCT_CLIPMAP_MARGIN)));
 
-    return illumination_texture_coordinates;
+    return illumination_opacity_texture_coordinates;
 }
 
 #endif

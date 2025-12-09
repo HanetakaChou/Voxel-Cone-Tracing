@@ -37,7 +37,6 @@ brx_vertex_shader_parameter_begin(main)
 brx_vertex_shader_parameter_in_vertex_index brx_vertex_shader_parameter_split
 brx_vertex_shader_parameter_in_instance_index brx_vertex_shader_parameter_split
 brx_vertex_shader_parameter_out_position brx_vertex_shader_parameter_split
-brx_vertex_shader_parameter_out_cull_distance brx_vertex_shader_parameter_split
 brx_vertex_shader_parameter_flat_out(brx_int, out_viewport_depth_direction_index, 0) brx_vertex_shader_parameter_split
 brx_vertex_shader_parameter_flat_out(brx_int, out_clipmap_stack_level_index, 1) brx_vertex_shader_parameter_split
 brx_vertex_shader_parameter_out(brx_float3, out_vertex_position_world_space, 2) brx_vertex_shader_parameter_split
@@ -82,19 +81,7 @@ brx_vertex_shader_parameter_end(main)
     
     brx_float4 vertex_position_clip_space = brx_mul(brx_vct_application_bridge_get_clipmap_stack_level_projection_matrix(clipmap_stack_level_index), brx_float4(vertex_position_view_space, 1.0));
 
-    brx_float2 cull_distance;
-    {
-        // "DepthClipEnable" is similiar to "SV_ClipDistance"
-        // The whole primitive will be clipped as long as one of the three vertices are clipped.
-        // Depth Direction
-        // assert(1.0 == vertex_position_clip_space.w)
-        cull_distance.x = vertex_position_clip_space.z - (-1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5));
-        cull_distance.y = (1.0 + 1.0 / (brx_float(BRX_VCT_CLIPMAP_MAP_SIZE) * 0.5)) - vertex_position_clip_space.z;
-    }
-
     brx_position = vertex_position_clip_space;
-    brx_cull_distance[0] = cull_distance.x;
-    brx_cull_distance[1] = cull_distance.y;
     out_viewport_depth_direction_index = viewport_depth_direction_index;
     out_clipmap_stack_level_index = clipmap_stack_level_index;
     out_vertex_position_world_space = vertex_position_world_space;
