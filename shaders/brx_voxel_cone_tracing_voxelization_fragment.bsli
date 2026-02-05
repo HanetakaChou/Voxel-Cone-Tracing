@@ -22,41 +22,14 @@
 #error "0 or 1"
 #endif
 
-#if BRX_VCT_ENABLE_ILLUMINATION
-
-#ifndef BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT
-#error "for example 36"
-#endif
-
-#ifndef BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT
-#error "for example 1"
-#endif
-
-#endif
-
 #include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
+#include "../include/brx_voxel_cone_tracing.h"
 
 brx_bool brx_vct_application_bridge_get_surface(in brx_float3 in_normal, in brx_float4 in_tangent, in brx_float2 in_texcoord, out brx_float3 out_surface_shading_normal_world_space, out brx_float3 out_surface_diffuse_color, out brx_float3 out_surface_specular_color, out brx_float out_surface_roughness, out brx_float out_surface_opacity, out brx_float3 out_surface_emissive);
 
 #if BRX_VCT_ENABLE_ILLUMINATION
 
-#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
-
-void brx_vct_application_bridge_get_environment_lighting_illumination(in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness, out brx_float3 out_environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT]);
-
-brx_float3 brx_vct_application_bridge_get_environment_lighting_radiance(in brx_float3 in_environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT], in brx_float3 in_outgoing_direction_world_space, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
-
-#endif
-
-#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
-
-brx_int brx_vct_application_bridge_get_direct_lighting_count(in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
-
-brx_float3 brx_vct_application_bridge_get_direct_lighting_illumination(in brx_int in_direct_lighting_index, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
-
-brx_float3 brx_vct_application_bridge_get_direct_lighting_radiance(in brx_int in_direct_lighting_index, in brx_float3 in_direct_lighting_illumination, in brx_float3 in_outgoing_direction_world_space, in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness);
-
-#endif
+void brx_vct_application_bridge_get_outgoing_radiances(in brx_float3 in_outgoing_directions_world_space[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))], in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_emissive, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness, out brx_float3 out_outgoing_radiances[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))]);
 
 #endif
 
@@ -76,7 +49,6 @@ brx_uint brx_vct_application_bridge_get_clipmap_illumination_opacity_blue_alpha(
 
 brx_uint brx_vct_application_bridge_compare_and_swap_clipmap_illumination_opacity_blue_alpha(in brx_int3 in_illumination_opacity_texture_coordinates, in brx_uint in_old_value, in brx_uint in_new_value);
 
-#include "../include/brx_voxel_cone_tracing.h"
 #include "brx_voxel_cone_tracing_resource.bsli"
 #include "../../Brioche-Shader-Language/shaders/brx_octahedral_mapping.bsli"
 
@@ -236,24 +208,6 @@ brx_pixel_shader_parameter_end(main)
 
 #if BRX_VCT_ENABLE_ILLUMINATION
 
-#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
-            brx_float3 environment_lighting_illumination[BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT];
-            brx_vct_application_bridge_get_environment_lighting_illumination(surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness, environment_lighting_illumination);
-#endif
-
-#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
-            const brx_int direct_lighting_count = brx_vct_application_bridge_get_direct_lighting_count(surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
-
-            // Avoid shadow map query multiple times
-            brx_float3 direct_lighting_illuminations[BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT];
-            {
-                brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
-                {
-                    direct_lighting_illuminations[direct_lighting_index] = brx_vct_application_bridge_get_direct_lighting_illumination(direct_lighting_index, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
-                }
-            }
-#endif
-
             // PBR Book V3: [Figure 14.14](https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation#BasicDerivation)
             // PBR Book V4: [Figure 13.1](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/The_Light_Transport_Equation)
             // L_i(ConeApexPosition, ConeDirection) = L_o(VoxelPosition, -ConeDirection)
@@ -263,7 +217,41 @@ brx_pixel_shader_parameter_end(main)
             //
             // to reduce bandwidth  
             // we only write the opacity to the zeroth index
-            
+
+            brx_float3 outgoing_directions_world_space[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))];
+            {
+                brx_unroll for (brx_int direction_index = 0; direction_index < (brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT)); ++direction_index)
+                {
+#if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT - 1))
+                brx_int direction_width_index = brx_int(brx_uint(direction_index) & brx_uint(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) - 1));
+                brx_int direction_height_index = brx_int(brx_uint(direction_index) >> brx_uint(brx_firstbithigh(brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT))));
+#else
+                    brx_int direction_width_index = brx_int(brx_uint(direction_index) % brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+                    brx_int direction_height_index = brx_int(brx_uint(direction_index) / brx_uint(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT));
+#endif
+
+                    brx_float3 N = surface_shading_normal_world_space;
+
+                    brx_float3 V;
+                    {
+                        brx_float2 uv = (brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5)) / brx_float2(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT, BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
+
+                        // PBRT-V4: [File Format](https://www.pbrt.org/users-guide-v4#file_format_changes)
+                        // PBRT-V4: [imgtool makeequiarea](https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cmd/imgtool.cpp#L2130)
+                        brx_float2 ndc_flip_x = uv * brx_float2(-2.0, -2.0) + brx_float2(1.0, 1.0);
+
+                        V = brx_octahedral_unmap(ndc_flip_x);
+                    }
+
+                    outgoing_directions_world_space[direction_index] = V;
+                }
+            }
+
+            brx_float3 outgoing_radiances[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))];
+            {
+                brx_vct_application_bridge_get_outgoing_radiances(outgoing_directions_world_space, surface_position_world_space, surface_shading_normal_world_space, surface_emissive, surface_diffuse_color, surface_specular_color, surface_roughness, outgoing_radiances);
+            }
+
             brx_unroll for (brx_int direction_index = 0; direction_index < (brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT)); ++direction_index)
             {
 #if 0 == (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT & (BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT - 1))
@@ -278,60 +266,23 @@ brx_pixel_shader_parameter_end(main)
                 {
                     brx_float3 N = surface_shading_normal_world_space;
 
-                    brx_float3 V;
-                    {
-                        brx_float2 uv = (brx_float2(direction_width_index, direction_height_index) + brx_float2(0.5, 0.5)) / brx_float2(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT, BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT);
-
-                        // PBRT-V4: [File Format](https://www.pbrt.org/users-guide-v4#file_format_changes)
-                        // PBRT-V4: [imgtool makeequiarea](https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cmd/imgtool.cpp#L2130)
-                        brx_float2 ndc_flip_x = uv * brx_float2(-2.0, -2.0) + brx_float2(1.0, 1.0);
-
-                        V = brx_octahedral_unmap(ndc_flip_x);
-                    }
+                    brx_float3 V = outgoing_directions_world_space[direction_index];
 
                     brx_float NdotV = brx_dot(N, V);
 
-                    brx_branch if (NdotV > 0.0)
-                    {
-                        brx_float3 brdf_mul_delta_phi_div_voxel_area = brx_float3(0.0, 0.0, 0.0);
+                    // we move "NdotV > 0.0" to app code
 
-                        // surface emissive
-                        {
-                            // TODO: theoretical explaination in Photon Mapping?
-                            brdf_mul_delta_phi_div_voxel_area += (surface_emissive);
-                        }
+                    // Photon Mapping
+                    // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
+                    // during the voxelization step, we calculate the "BRDF * E_n" part
+                    // which happens to be the same as radiance formula in real time rendering
+                    brx_float3 brdf_mul_delta_phi_div_voxel_area = outgoing_radiances[direction_index];
 
-#if BRX_VCT_VOXELIZATION_MAXIMUM_ENVIRONMENT_LIGHTING_ILLUMINATION_FLOAT_COUNT > 0
-                        {
-                            // TODO: theoretical explaination in Photon Mapping?
-                            brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_environment_lighting_radiance(environment_lighting_illumination, V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
-                        }
-#endif
-
-#if BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT > 0
-                        // direct lighting
-                        {
-                            brx_unroll for (brx_int direct_lighting_index = 0; (direct_lighting_index < brx_int(BRX_VCT_VOXELIZATION_MAXIMUM_DIRECT_LIGHTING_COUNT)) && (direct_lighting_index < direct_lighting_count); ++direct_lighting_index)
-                            {
-                                // Photon Mapping
-                                // L_o(VoxelPosition, VoxelViewDirection) = (1 / ConeBaseDiameter * ConeBaseDiameter) * BRDF * E_n * VoxelSize * VoxelSize
-                                // during the voxelization step, we calculate the "BRDF * E_n" part
-                                // which happens to be the same as radiance formula in real time rendering
-                                brdf_mul_delta_phi_div_voxel_area += brx_vct_application_bridge_get_direct_lighting_radiance(direct_lighting_index, direct_lighting_illuminations[direct_lighting_index], V, surface_position_world_space, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness);
-                            }
-                        }
-#endif
-
-                        // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
-                        // premultiplied alpha color: "BRDF * E_n * VoxelOpacity"
-                        // we have to use the "premultiplied alpha color" because the same voxel can be occupied by multiple triangles
-                        // but the opacity of each triangle should only contribute to the illumination of the same triangle
-                        illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
-                    }
-                    else
-                    {
-                        illumination = brx_float3(0.0, 0.0, 0.0);
-                    }
+                    // [Dunn 2014] [Alex Dunn. "Transparency (or Translucency) Rendering." NVIDIA GameWorks Blog 2014.](https://developer.nvidia.com/content/accumulation_transparency-or-translucency-rendering)
+                    // premultiplied alpha color: "BRDF * E_n * VoxelOpacity"
+                    // we have to use the "premultiplied alpha color" because the same voxel can be occupied by multiple triangles
+                    // but the opacity of each triangle should only contribute to the illumination of the same triangle
+                    illumination = brdf_mul_delta_phi_div_voxel_area * opacity;
                 }
 
                 brx_branch if (0 == direction_index)
