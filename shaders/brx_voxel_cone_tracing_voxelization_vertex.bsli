@@ -20,9 +20,9 @@
 
 #include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
 
-void brx_vct_application_bridge_get_triangle_vertices(in brx_uint in_triangle_index, out brx_float3 out_triangle_vertex_position_world_space_a, out brx_float3 out_triangle_vertex_position_world_space_b, out brx_float3 out_triangle_vertex_position_world_space_c);
+void brx_vct_application_bridge_get_triangle_vertices(in brx_uint in_triangle_index, out brx_uint3 out_triangle_vertex_indices, out brx_float3 out_triangle_vertices_position_model_space[3], out brx_float3 out_triangle_vertices_position_world_space[3]);
 
-void brx_vct_application_bridge_get_vertex(in brx_uint in_vertex_index, out brx_float3 out_vertex_position_world_space, out brx_float3 out_vertex_normal_world_space, out brx_float4 out_vertex_tangent_world_space, out brx_float2 out_vertex_texcoord);
+void brx_vct_application_bridge_get_vertex(in brx_uint in_triangle_vertex_index, in brx_uint3 in_triangle_vertex_indices, in brx_float3 in_triangle_vertices_position_model_space[3], in brx_float3 in_triangle_vertices_position_world_space[3], out brx_float3 out_vertex_normal_world_space, out brx_float4 out_vertex_tangent_world_space, out brx_float2 out_vertex_texcoord);
 
 brx_float4x4 brx_vct_application_bridge_get_viewport_depth_direction_view_matrix(in brx_int in_viewport_depth_direction_index);
 
@@ -45,8 +45,12 @@ brx_vertex_shader_parameter_out(brx_float4, out_vertex_tangent, 4) brx_vertex_sh
 brx_vertex_shader_parameter_out(brx_float2, out_vertex_texcoord, 5) 
 brx_vertex_shader_parameter_end(main)
 {
+    brx_uint triangle_index = (brx_uint(brx_vertex_index) / 3u);
+
+    brx_uint3 triangle_vertex_indices;
+    brx_float3 triangle_vertices_position_model_space[3];
     brx_float3 triangle_vertices_position_world_space[3];
-    brx_vct_application_bridge_get_triangle_vertices((brx_uint(brx_vertex_index) / 3u), triangle_vertices_position_world_space[0], triangle_vertices_position_world_space[1], triangle_vertices_position_world_space[2]);
+    brx_vct_application_bridge_get_triangle_vertices(triangle_index, triangle_vertex_indices, triangle_vertices_position_model_space, triangle_vertices_position_world_space);
 
     brx_int viewport_depth_direction_index;
     {
@@ -71,14 +75,17 @@ brx_vertex_shader_parameter_end(main)
 
     brx_int clipmap_stack_level_index = brx_instance_index;
 
-    brx_float3 vertex_position_world_space;
+    brx_uint triangle_vertex_index = (brx_uint(brx_vertex_index) % 3u);
+
+    brx_float3 vertex_position_world_space = triangle_vertices_position_world_space[triangle_vertex_index];
+
     brx_float3 vertex_normal_world_space;
     brx_float4 vertex_tangent_world_space;
     brx_float2 vertex_texcoord;
-    brx_vct_application_bridge_get_vertex(brx_uint(brx_vertex_index), vertex_position_world_space, vertex_normal_world_space, vertex_tangent_world_space, vertex_texcoord);
+    brx_vct_application_bridge_get_vertex(triangle_vertex_index, triangle_vertex_indices, triangle_vertices_position_model_space, triangle_vertices_position_world_space, vertex_normal_world_space, vertex_tangent_world_space, vertex_texcoord);
 
     brx_float3 vertex_position_view_space = brx_mul(brx_vct_application_bridge_get_viewport_depth_direction_view_matrix(viewport_depth_direction_index), brx_float4(vertex_position_world_space, 1.0)).xyz;
-    
+
     brx_float4 vertex_position_clip_space = brx_mul(brx_vct_application_bridge_get_clipmap_stack_level_projection_matrix(clipmap_stack_level_index), brx_float4(vertex_position_view_space, 1.0));
 
     brx_position = vertex_position_clip_space;
