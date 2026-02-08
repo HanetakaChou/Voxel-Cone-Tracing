@@ -25,11 +25,11 @@
 #include "../../Brioche-Shader-Language/shaders/brx_shader_language.bsli"
 #include "../include/brx_voxel_cone_tracing.h"
 
-brx_bool brx_vct_application_bridge_get_surface(in brx_float3 in_normal, in brx_float4 in_tangent, in brx_float2 in_texcoord, out brx_float3 out_surface_shading_normal_world_space, out brx_float3 out_surface_diffuse_color, out brx_float3 out_surface_specular_color, out brx_float out_surface_roughness, out brx_float out_surface_opacity, out brx_float3 out_surface_emissive);
+brx_bool brx_vct_application_bridge_get_surface(in brx_float3 in_normal, in brx_float4 in_tangent, in brx_float2 in_texcoord, out brx_float3 out_surface_shading_normal_world_space, out brx_float3 out_surface_diffuse_color, out brx_float3 out_surface_specular_color, out brx_float out_surface_roughness, out brx_float out_surface_opacity, out brx_float3 out_surface_emissive, out brx_bool out_surface_material_face);
 
 #if BRX_VCT_ENABLE_ILLUMINATION
 
-void brx_vct_application_bridge_get_outgoing_radiances(in brx_float3 in_outgoing_directions_world_space[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))], in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_emissive, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness, out brx_float3 out_outgoing_radiances[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))]);
+void brx_vct_application_bridge_get_outgoing_radiances(in brx_float3 in_outgoing_directions_world_space[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))], in brx_float3 in_surface_position_world_space, in brx_float3 in_surface_shading_normal_world_space, in brx_float3 in_surface_emissive, in brx_float3 in_surface_diffuse_color, in brx_float3 in_surface_specular_color, in brx_float in_surface_roughness, in brx_bool in_surface_material_face, in brx_float3 in_surface_position_non_deformed_model_space, out brx_float3 out_outgoing_radiances[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))]);
 
 #endif
 
@@ -71,7 +71,8 @@ brx_pixel_shader_parameter_flat_in(brx_int, in_clipmap_stack_level_index, 1) brx
 brx_pixel_shader_parameter_in(brx_float3, in_interpolated_position_world_space, 2) brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_in(brx_float3, in_interpolated_normal, 3) brx_pixel_shader_parameter_split
 brx_pixel_shader_parameter_in(brx_float4, in_interpolated_tangent, 4) brx_pixel_shader_parameter_split
-brx_pixel_shader_parameter_in(brx_float2, in_interpolated_texcoord, 5)
+brx_pixel_shader_parameter_in(brx_float2, in_interpolated_texcoord, 5) brx_pixel_shader_parameter_split
+brx_pixel_shader_parameter_in(brx_float3, in_interpolated_position_non_deformed_model_space, 6)
 brx_pixel_shader_parameter_end(main)
 {
     brx_float3 surface_shading_normal_world_space;
@@ -80,13 +81,16 @@ brx_pixel_shader_parameter_end(main)
     brx_float surface_roughness;
     brx_float surface_opacity;
     brx_float3 surface_emissive;
-    brx_branch if (!brx_vct_application_bridge_get_surface(in_interpolated_normal, in_interpolated_tangent, in_interpolated_texcoord, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness, surface_opacity, surface_emissive))
+    brx_bool surface_material_face;
+    brx_branch if (!brx_vct_application_bridge_get_surface(in_interpolated_normal, in_interpolated_tangent, in_interpolated_texcoord, surface_shading_normal_world_space, surface_diffuse_color, surface_specular_color, surface_roughness, surface_opacity, surface_emissive, surface_material_face))
     {
         // discard;
         return;
     }
 
     brx_float3 surface_position_world_space = in_interpolated_position_world_space;
+
+    brx_float3 surface_position_non_deformed_model_space = in_interpolated_position_non_deformed_model_space;
 
     // right negative -> right positive
     // up negative -> up positive
@@ -249,7 +253,7 @@ brx_pixel_shader_parameter_end(main)
 
             brx_float3 outgoing_radiances[(brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT))];
             {
-                brx_vct_application_bridge_get_outgoing_radiances(outgoing_directions_world_space, surface_position_world_space, surface_shading_normal_world_space, surface_emissive, surface_diffuse_color, surface_specular_color, surface_roughness, outgoing_radiances);
+                brx_vct_application_bridge_get_outgoing_radiances(outgoing_directions_world_space, surface_position_world_space, surface_shading_normal_world_space, surface_emissive, surface_diffuse_color, surface_specular_color, surface_roughness, surface_material_face, surface_position_non_deformed_model_space, outgoing_radiances);
             }
 
             brx_unroll for (brx_int direction_index = 0; direction_index < (brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_WIDTH_COUNT) * brx_int(BRX_VCT_CLIPMAP_ILLUMINATION_TEXTURE_DIRECTION_HEIGHT_COUNT)); ++direction_index)
